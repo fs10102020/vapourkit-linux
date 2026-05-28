@@ -1,0 +1,12 @@
+/node_modules
+/data
+/build
+/dist
+/.vite
+/release
+/.desktop.ini
+/main.log
+/package-lock.json
+/*.png
+/include/plugins/plugins
+/include/scripts/extra_scripts

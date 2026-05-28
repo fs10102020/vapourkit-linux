@@ -1,0 +1,22 @@
+name = "Undistort (TensorRT)"
+category = [ "Restoration", "Stabilization" ]
+code = """
+# Full Docs: https://github.com/pifroggi/vs_undistort?tab=readme-ov-file#tensorrt-backend
+
+temp_window   = 10
+tile_width    = None
+tile_height   = None
+overlap       = None
+num_streams   = 1
+activate      = False  # When True, a TensorRT engine will be build and the filter activated the next time the script is evaluated. This may take a few minutes.
+
+
+import vs_undistort
+clip = core.resize.Bilinear(clip, format=vs.RGBH, matrix_in_s=709)
+if activate:
+    clip = vs_undistort.tensorrt(clip, temp_window=temp_window, tile_width=tile_width, tile_height=tile_height, overlap=overlap, num_streams=num_streams)
+clip = core.resize.Point(clip, format=vs.YUV444P16, matrix_s=709)"""
+description = "Removes distortions, turbulance, heat haze, or similar. TensorRT is faster, but has less controls."
+
+[metadata]
+createdAt = "2025-12-09T17:55:17.476Z"

@@ -1,0 +1,21 @@
+name = "Undistort (PyTorch)"
+category = [ "Restoration", "Stabilization" ]
+code = """
+# Full Docs: https://github.com/pifroggi/vs_undistort?tab=readme-ov-file#pytorch-backend
+
+temp_window   = 10
+tile_width    = None
+tile_height   = None
+overlap       = None
+interpolation = "bilinear"
+scales        = [True, True, True]
+
+
+import vs_undistort
+clip = core.resize.Bilinear(clip, format=vs.RGBH, matrix_in_s=709)
+clip = vs_undistort.pytorch(clip, temp_window=temp_window, tile_width=tile_width, tile_height=tile_height, overlap=overlap, scales=scales, interpolation=interpolation, device="cuda")
+clip = core.resize.Point(clip, format=vs.YUV444P16, matrix_s=709)"""
+description = "Removes distortions, turbulance, heat haze, or similar. PyTorch is slower, but has extra controls."
+
+[metadata]
+createdAt = "2025-12-09T17:51:56.208Z"
