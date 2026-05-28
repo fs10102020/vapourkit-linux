@@ -4,6 +4,7 @@ import { PATHS } from './constants';
 import { spawn } from 'child_process';
 import { setupVSEnvironment } from './utils';
 import { parseBestSourceProgress } from './bestSourceProgressParser';
+import { libName } from './platform';
 import * as path from 'path';
 import * as fs from 'fs-extra';
 import * as os from 'os';
@@ -175,7 +176,7 @@ export async function getVideoFrameCount(
       return undefined;
     }
 
-    const bestSourcePath = path.join(PATHS.PLUGINS, 'bestsource.dll');
+    const bestSourcePath = path.join(PATHS.PLUGINS, libName('bestsource'));
     if (!fs.existsSync(bestSourcePath)) {
       logger.warn('BestSource plugin not available for frame count extraction');
       return undefined;

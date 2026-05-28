@@ -9,6 +9,7 @@ import { runCommand, getBundledBasePath } from './utils';
 import { FFmpegManager } from './ffmpegManager';
 import { configManager } from './configManager';
 import { VsMlrtManager } from './vsMlrtManager';
+import { libName, isLinux } from './platform';
 import * as _7z from '7zip-min';
 
 export interface DownloadProgress {
@@ -217,9 +218,9 @@ export class DependencyManager {
     const hasCuda = await detectCudaSupport();
     
     const vsExists = await fs.pathExists(PATHS.VSPIPE);
-    const mlrtExists = hasCuda ? await fs.pathExists(path.join(PATHS.MLRT_PLUGIN, 'trtexec.exe')) : true; // Skip if no CUDA
-    const ortExists = await fs.pathExists(path.join(PATHS.PLUGINS, 'vsort.dll'));
-    const bsExists = await fs.pathExists(path.join(PATHS.PLUGINS, 'bestsource.dll'));
+    const mlrtExists = hasCuda ? await fs.pathExists(PATHS.TRTEXEC) : true;
+    const ortExists = await fs.pathExists(path.join(PATHS.PLUGINS, libName('vsort')));
+    const bsExists = await fs.pathExists(path.join(PATHS.PLUGINS, libName('bestsource')));
     const pythonExists = await fs.pathExists(PATHS.PYTHON);
     const videoCompareExists = await fs.pathExists(PATHS.VIDEO_COMPARE_EXE);
     const ffmpegExists = await FFmpegManager.isInstalled();

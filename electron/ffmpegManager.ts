@@ -2,16 +2,13 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import { PATHS } from './constants';
 import { logger } from './logger';
+import { exeName, isWindows } from './platform';
 
-/**
- * Manages the standalone ffmpeg binary
- * Downloads and extracts ffmpeg from gyan.dev if not present
- */
 export class FFmpegManager {
   private static readonly FFMPEG_URL = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z';
   private static readonly FFMPEG_DIR = path.join(PATHS.APP_DATA, 'ffmpeg');
-  private static readonly FFMPEG_EXE = path.join(FFmpegManager.FFMPEG_DIR, 'bin', 'ffmpeg.exe');
-  private static readonly FFPROBE_EXE = path.join(FFmpegManager.FFMPEG_DIR, 'bin', 'ffprobe.exe');
+  private static readonly FFMPEG_EXE = PATHS.FFMPEG;
+  private static readonly FFPROBE_EXE = PATHS.FFPROBE;
 
   /**
    * Gets the path to the ffmpeg executable

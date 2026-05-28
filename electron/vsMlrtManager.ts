@@ -5,6 +5,7 @@ import axios from 'axios';
 import { BrowserWindow } from 'electron';
 import { PATHS, VS_MLRT_VERSION } from './constants';
 import { logger } from './logger';
+import { libName, exeName, isWindows } from './platform';
 import * as _7z from '7zip-min';
 
 export type VsMlrtComponent = 'onnx-runtime' | 'tensorrt';
@@ -22,12 +23,13 @@ export class VsMlrtManager {
    */
   static getComponentUrl(component: VsMlrtComponent): string {
     const baseUrl = `https://github.com/AmusementClub/vs-mlrt/releases/download/v${VS_MLRT_VERSION}`;
+    const platformTag = isWindows ? 'Windows' : 'Linux';
     
     switch (component) {
       case 'onnx-runtime':
-        return `${baseUrl}/VSORT-Windows-x64.v${VS_MLRT_VERSION}.7z`;
+        return `${baseUrl}/VSORT-${platformTag}-x64.v${VS_MLRT_VERSION}.7z`;
       case 'tensorrt':
-        return `${baseUrl}/vsmlrt-windows-x64-tensorrt.v${VS_MLRT_VERSION}.7z`;
+        return `${baseUrl}/vsmlrt-${platformTag.toLowerCase()}-x64-tensorrt.v${VS_MLRT_VERSION}.7z`;
     }
   }
 
@@ -61,9 +63,9 @@ export class VsMlrtManager {
   static getCheckPath(component: VsMlrtComponent): string {
     switch (component) {
       case 'onnx-runtime':
-        return path.join(PATHS.PLUGINS, 'vsort.dll');
+        return path.join(PATHS.PLUGINS, libName('vsort'));
       case 'tensorrt':
-        return path.join(PATHS.MLRT_PLUGIN, 'trtexec.exe');
+        return path.join(PATHS.MLRT_PLUGIN, exeName('trtexec'));
     }
   }
 

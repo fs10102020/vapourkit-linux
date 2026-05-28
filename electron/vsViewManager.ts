@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import { PATHS } from './constants';
 import { logger } from './logger';
 import { setupVSEnvironment } from './utils';
+import { resolveVsviewPath, isLinux } from './platform';
 
 /**
  * Manager for vs-view - VapourSynth script previewer tool
@@ -196,11 +197,7 @@ export class VsViewManager {
       // Setup environment for VapourSynth
       const env = setupVSEnvironment();
 
-      // Use the pip-generated console_scripts wrapper directly.
-      // `python -m vsview` does not work — the vsview package has no __main__.py;
-      // its entry point is declared as `vsview = vsview.cli:main` in entry_points.txt,
-      // which pip materializes as Scripts/vsview.exe.
-      const vsviewExe = path.join(PATHS.VS, 'Scripts', 'vsview.exe');
+      const vsviewExe = resolveVsviewPath(PATHS.VS);
       if (!fs.existsSync(vsviewExe)) {
         const error = `vs-view executable not found at: ${vsviewExe}. The pip install may not have completed.`;
         logger.error(error);

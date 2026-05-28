@@ -1,8 +1,8 @@
-// electron/utils.ts
-import { spawn, ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import * as path from 'path';
 import { logger } from './logger';
 import { PATHS } from './constants';
+import { isWindows, isLinux, platformSpawnOptions } from './platform';
 
 export interface ProcessResult {
   stdout: string;
@@ -10,9 +10,6 @@ export interface ProcessResult {
   code: number;
 }
 
-/**
- * Extracts error message from unknown error type
- */
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -23,9 +20,6 @@ export function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-/**
- * Fixes ASAR unpacked paths for native modules
- */
 export function fixAsarPath(filePath: string): string {
   if (filePath && filePath.includes('app.asar') && !filePath.includes('app.asar.unpacked')) {
     return filePath.replace('app.asar', 'app.asar.unpacked');
@@ -33,18 +27,11 @@ export function fixAsarPath(filePath: string): string {
   return filePath;
 }
 
-/**
- * Returns the app base path with ASAR unpacking applied.
- * Use this whenever you need to access bundled files from include/.
- */
 export function getBundledBasePath(): string {
   const { app } = require('electron');
   return fixAsarPath(app.getAppPath());
 }
 
-/**
- * Shared utility to run a command with stdout/stderr capture
- */
 export async function runCommand(
   command: string,
   args: string[],
@@ -52,19 +39,14 @@ export async function runCommand(
   env?: NodeJS.ProcessEnv
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Quote command if it contains spaces (Windows compatibility)
-    const quotedCommand = command.includes(' ') ? `"${command}"` : command;
-    
-    // Quote args that contain spaces (Windows compatibility)
-    const quotedArgs = args.map(arg => arg.includes(' ') ? `"${arg}"` : arg);
-    
-    logger.debug(`Running command: ${quotedCommand} ${quotedArgs.join(' ')}`);
+    logger.debug(`Running command: ${command} ${args.join(' ')}`);
     logger.debug(`Working directory: ${cwd || process.cwd()}`);
-    
-    const proc = spawn(quotedCommand, quotedArgs, {
+
+    const proc = spawn(command, args, {
       cwd: cwd || process.cwd(),
       shell: true,
-      env: env || process.env
+      env: env || process.env,
+      ...platformSpawnOptions(),
     });
 
     let stdout = '';
@@ -104,31 +86,37 @@ export async function runCommand(
   });
 }
 
-/**
- * Setup VapourSynth environment variables
- */
 export function setupVSEnvironment(pythonPath?: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  
-  // Setup Python environment if path provided
+
   if (pythonPath) {
     const pythonDir = path.dirname(pythonPath);
-    env['PATH'] = `${pythonDir};${env['PATH']}`;
-    env['PYTHONHOME'] = pythonDir;
-    env['PYTHONPATH'] = path.join(pythonDir, 'Lib', 'site-packages');
+    env['PATH'] = `${pythonDir}${path.delimiter}${env['PATH'] || ''}`;
+
+    if (isWindows) {
+      env['PYTHONHOME'] = pythonDir;
+      env['PYTHONPATH'] = path.join(pythonDir, 'Lib', 'site-packages');
+    }
+
+    if (isLinux) {
+      const vsLibDir = path.join(path.dirname(pythonDir), 'lib');
+      const ldPath = env['LD_LIBRARY_PATH']
+        ? `${vsLibDir}${path.delimiter}${env['LD_LIBRARY_PATH']}`
+        : vsLibDir;
+      env['LD_LIBRARY_PATH'] = ldPath;
+
+      if (env['PYTHONHOME']) {
+        delete env['PYTHONHOME'];
+      }
+    }
   }
-  
-  // Setup VapourSynth plugin paths
+
   env['VS_PLUGINS_PATH'] = PATHS.PLUGINS;
   env['VAPOURSYNTH_PLUGINS_PATH'] = PATHS.PLUGINS;
-  
+
   return env;
 }
 
-
-/**
- * Wrapper for operations that need logging separators
- */
 export async function withLogSeparator<T>(
   operation: () => Promise<T>,
   startMessage?: string
@@ -147,19 +135,12 @@ export async function withLogSeparator<T>(
   }
 }
 
-/**
- * GPU stats returned by pollGpuStats
- */
 export interface GpuStats {
   gpuMemoryUsed: number;
   gpuMemoryTotal: number;
   gpuUtilization: number;
 }
 
-/**
- * Polls nvidia-smi for GPU memory and utilization stats.
- * Returns null if nvidia-smi is unavailable (non-NVIDIA systems).
- */
 export async function pollGpuStats(): Promise<GpuStats | null> {
   try {
     const proc = spawn('nvidia-smi', [
@@ -167,7 +148,7 @@ export async function pollGpuStats(): Promise<GpuStats | null> {
       '--format=csv,noheader,nounits'
     ], {
       shell: true,
-      windowsHide: true
+      ...platformSpawnOptions(),
     });
 
     return new Promise((resolve) => {
@@ -206,15 +187,11 @@ export async function pollGpuStats(): Promise<GpuStats | null> {
   }
 }
 
-/**
- * Detects if CUDA-capable NVIDIA GPU is available
- */
 export async function detectCudaSupport(): Promise<boolean> {
   try {
-    // Try to run nvidia-smi to detect NVIDIA GPU
     const proc = spawn('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], {
       shell: true,
-      windowsHide: true
+      ...platformSpawnOptions(),
     });
 
     return new Promise((resolve) => {
@@ -245,7 +222,6 @@ export async function detectCudaSupport(): Promise<boolean> {
         resolve(false);
       });
 
-      // Timeout after 3 seconds
       setTimeout(() => {
         proc.kill();
         resolve(false);

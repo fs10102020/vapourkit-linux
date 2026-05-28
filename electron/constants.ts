@@ -1,17 +1,10 @@
 import * as path from 'path';
-import { app } from 'electron';
+import { exeName, libName, resolveAppDataPath } from './platform';
 
-// Current vs-mlrt TensorRT version - update this when upgrading vs-mlrt
 export const VS_MLRT_VERSION = '15.13';
 
-// Use portable path relative to the executable location
-// In development: uses the project directory
-// In production: uses the directory where the .exe is located
-export const APP_DATA_PATH = app.isPackaged 
-  ? path.join(path.dirname(app.getPath('exe')), 'data')
-  : path.join(app.getAppPath(), 'data');
+export const APP_DATA_PATH = resolveAppDataPath();
 
-// Centralized path constants
 export const PATHS = {
   APP_DATA: APP_DATA_PATH,
   VS: path.join(APP_DATA_PATH, 'vapoursynth-portable'),
@@ -23,15 +16,20 @@ export const PATHS = {
   VIDEO_COMPARE: path.join(APP_DATA_PATH, 'video-compare'),
   FILTER_TEMPLATES: path.join(APP_DATA_PATH, 'config', 'filter-templates'),
   PIP_CACHE: path.join(APP_DATA_PATH, 'pip-cache'),
-  
-  // Executables
-  get VSPIPE() { return path.join(this.VS, 'vspipe.exe'); },
-  get PYTHON() { return path.join(this.VS, 'python.exe'); },
-  get TRTEXEC() { return path.join(this.MLRT_PLUGIN, 'trtexec.exe'); },
-  get VIDEO_COMPARE_EXE() { return path.join(this.VIDEO_COMPARE, 'video-compare.exe'); },
-  
+  PYTHON_VENV: path.join(APP_DATA_PATH, 'python-venv'),
+
+  // Executables (platform-aware)
+  get VSPIPE() { return path.join(this.VS, exeName('vspipe')); },
+  get PYTHON() { return path.join(this.VS, exeName('python')); },
+  get TRTEXEC() { return path.join(this.MLRT_PLUGIN, exeName('trtexec')); },
+  get VIDEO_COMPARE_EXE() { return path.join(this.VIDEO_COMPARE, exeName('video-compare')); },
+
   // FFmpeg
   FFMPEG_DIR: path.join(APP_DATA_PATH, 'ffmpeg'),
-  get FFMPEG() { return path.join(this.FFMPEG_DIR, 'bin', 'ffmpeg.exe'); },
-  get FFPROBE() { return path.join(this.FFMPEG_DIR, 'bin', 'ffprobe.exe'); }
+  get FFMPEG() { return path.join(this.FFMPEG_DIR, 'bin', exeName('ffmpeg')); },
+  get FFPROBE() { return path.join(this.FFMPEG_DIR, 'bin', exeName('ffprobe')); },
+
+  // Linux venv paths
+  get VENV_PYTHON() { return path.join(this.PYTHON_VENV, 'bin', exeName('python')); },
+  get VENV_VSVIEW() { return path.join(this.PYTHON_VENV, 'bin', 'vsview'); },
 } as const;

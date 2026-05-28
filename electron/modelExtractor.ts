@@ -4,6 +4,7 @@ import * as fs from 'fs-extra';
 import { logger } from './logger';
 import { PATHS } from './constants';
 import { getBundledBasePath } from './utils';
+import { forceKillProcess } from './platform';
 
 export class ModelExtractor {
   private bundledModelsPath: string;
@@ -318,20 +319,7 @@ export class ModelExtractor {
   private killCurrentProcess(): void {
     if (this.currentTrtexecProcess) {
       try {
-        // On Windows, we need to kill the entire process tree immediately
-        if (process.platform === 'win32') {
-          const { exec } = require('child_process');
-          exec(`taskkill /F /T /PID ${this.currentTrtexecProcess.pid}`, (error: any) => {
-            if (error && !error.message.includes('not found')) {
-              logger.debug('taskkill error (may already be dead):', error.message);
-            } else {
-              logger.model('trtexec process tree terminated');
-            }
-          });
-        } else {
-          // On Unix-like systems, SIGKILL for immediate termination
-          this.currentTrtexecProcess.kill('SIGKILL');
-        }
+        forceKillProcess(this.currentTrtexecProcess);
         this.currentTrtexecProcess = null;
       } catch (error) {
         logger.error('Error killing trtexec process:', error);
