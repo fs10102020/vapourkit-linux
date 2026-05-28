@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=VapourKit
+Comment=Advanced GUI for VapourSynth and AI Video Upscaling
+Exec=vapourkit
+Icon=com.aivideoupscaler.gui
+Type=Application
+Categories=AudioVideo;Video;
+Terminal=false
+StartupNotify=true

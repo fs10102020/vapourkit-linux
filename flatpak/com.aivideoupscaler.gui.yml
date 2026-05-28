@@ -1,0 +1,92 @@
+app-id: com.aivideoupscaler.gui
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: vapourkit
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --share=network
+  - --device=dri
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-download
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-music
+  - --talk-name=org.freedesktop.portal.FileChooser
+  - --talk-name=org.freedesktop.portal.OpenURI
+
+modules:
+  - name: ffmpeg
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --disable-doc
+      - --disable-manpages
+      - --enable-gpl
+      - --enable-libx264
+      - --enable-libx265
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-7.0.2.tar.xz
+        sha256: 8646515b638a3ad303e23af6a3587734447cb8fc0a0c064ecdb8e95c4fb8bbcd
+
+  - name: vapoursynth
+    buildsystem: meson
+    config-opts:
+      - -Dlibdir=lib
+    sources:
+      - type: git
+        url: https://github.com/vapoursynth/vapoursynth.git
+        tag: R77
+
+  - name: bestsource
+    build-options:
+      prefix: /app
+    buildsystem: meson
+    config-opts:
+      - -Dlibdir=lib/vapoursynth
+    sources:
+      - type: git
+        url: https://github.com/vapoursynth/bestsource.git
+        tag: R13
+
+  - name: video-compare
+    buildsystem: simple
+    build-commands:
+      - make
+      - install -Dm755 video-compare /app/bin/video-compare
+    sources:
+      - type: git
+        url: https://github.com/pixop/video-compare.git
+        tag: '20250928'
+
+  - name: python-packages
+    buildsystem: simple
+    build-commands:
+      - python3 -m venv --copies /app/python-venv
+      - /app/python-venv/bin/pip install --no-cache-dir setuptools wheel pip --upgrade
+      - /app/python-venv/bin/pip install --no-cache-dir vapoursynth vsjetpack==1.1.0 vsview==0.5.0
+    sources: []
+
+  - name: vapourkit
+    buildsystem: simple
+    build-commands:
+      - npm install --include=dev
+      - npm run build
+      - mkdir -p /app/vapourkit
+      - cp -r dist /app/vapourkit/
+      - cp -r include /app/vapourkit/
+      - cp -r node_modules /app/vapourkit/
+      - cp package.json /app/vapourkit/
+      - install -Dm755 flatpak/vapourkit.sh /app/bin/vapourkit
+      - install -Dm644 flatpak/com.aivideoupscaler.gui.desktop /app/share/applications/com.aivideoupscaler.gui.desktop
+      - install -Dm644 flatpak/com.aivideoupscaler.gui.metainfo.xml /app/share/metainfo/com.aivideoupscaler.gui.metainfo.xml
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/256x256/apps/com.aivideoupscaler.gui.png
+    sources:
+      - type: dir
+        path: .
