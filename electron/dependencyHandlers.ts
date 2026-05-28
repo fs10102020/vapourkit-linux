@@ -165,4 +165,15 @@ export function registerDependencyHandlers(
       return { success: false, error: errorMsg };
     }
   });
+
+  ipcMain.handle('check-dependency-status', async () => {
+    logger.info('Checking dependency status');
+    try {
+      const { DependencyResolver } = await import('./dependencyResolver');
+      return await DependencyResolver.resolveAll();
+    } catch (error) {
+      logger.error('Error checking dependency status:', error);
+      return [];
+    }
+  });
 }

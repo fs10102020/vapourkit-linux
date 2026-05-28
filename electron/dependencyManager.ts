@@ -419,6 +419,11 @@ export class DependencyManager {
     }
   }
 
+  async checkDependencyStatus(): Promise<import('./dependencyResolver').DependencyStatus[]> {
+    const { DependencyResolver } = await import('./dependencyResolver');
+    return DependencyResolver.resolveAll();
+  }
+
   async setupDependencies(): Promise<void> {
     logger.separator();
     logger.dependency('Starting dependency setup process');
@@ -428,99 +433,157 @@ export class DependencyManager {
       const { detectCudaSupport } = await import('./utils');
       const hasCuda = await detectCudaSupport();
       logger.dependency(`=== CUDA DETECTION RESULT: ${hasCuda} ===`);
-      logger.dependency(`Will ${hasCuda ? 'DOWNLOAD' : 'SKIP'} TensorRT plugin`);
-      
-      // Component configurations (non-vs-mlrt components)
-      const components: ComponentConfig[] = [
-        {
-          name: 'VapourSynth R72',
-          url: 'https://github.com/vapoursynth/vapoursynth/releases/download/R72/VapourSynth64-Portable-R72.zip',
-          archiveName: 'vs-portable.zip',
-          checkPath: PATHS.VSPIPE,
-          extractTo: PATHS.VS
-        },
-        {
-          name: 'BestSource R13',
-          url: 'https://github.com/vapoursynth/bestsource/releases/download/R13/BestSource-R13.7z',
-          archiveName: 'bestsource.7z',
-          checkPath: path.join(PATHS.PLUGINS, 'bestsource.dll'),
-          extractTo: PATHS.PLUGINS
-        },
-        {
-          name: 'Video Compare Tool',
-          url: 'https://github.com/pixop/video-compare/releases/download/20250928/video-compare-20250928-win10-x86_64.zip',
-          archiveName: 'video-compare.zip',
-          checkPath: PATHS.VIDEO_COMPARE_EXE,
-          extractTo: PATHS.VIDEO_COMPARE
+
+      if (isLinux) {
+        // Linux: use native dependency resolver
+        const { DependencyResolver } = await import('./dependencyResolver');
+
+        this.sendProgress({ type: 'download', component: 'Platform Setup', progress: 0, message: 'Setting up Linux environment...' });
+
+        await DependencyResolver.resolvePython();
+        this.sendProgress({ type: 'download', component: 'Python', progress: 20, message: 'Python detected' });
+
+        const venvResult = await DependencyResolver.setupVenv();
+        if (!venvResult.installed) {
+          this.sendProgress({ type: 'error', component: 'Python venv', progress: 0, message: venvResult.guide || 'Failed to create Python venv' });
+          throw new Error(venvResult.guide || 'Failed to create Python venv');
         }
-      ];
+        this.sendProgress({ type: 'download', component: 'Python venv', progress: 40, message: 'Python venv created' });
 
-      // Check for vs-mlrt version change before installation
-      const storedVsMlrtVersion = configManager.getVsMlrtVersion();
-      const hasVsMlrtVersionChange = storedVsMlrtVersion && storedVsMlrtVersion !== VS_MLRT_VERSION;
-      
-      if (hasCuda && hasVsMlrtVersionChange) {
-        logger.dependency(`=== vs-mlrt VERSION CHANGE DETECTED: ${storedVsMlrtVersion} → ${VS_MLRT_VERSION} ===`);
-        logger.dependency('User will be notified to rebuild TensorRT engines');
-      }
+        const pipResults = await DependencyResolver.installPipPackages();
+        const pipFailed = pipResults.filter(r => !r.installed);
+        if (pipFailed.length > 0) {
+          logger.warn('Some pip packages failed to install:', pipFailed.map(r => r.name).join(', '));
+        }
+        this.sendProgress({ type: 'download', component: 'Python Packages', progress: 70, message: 'Python packages installed' });
 
-      // Install standard components
-      for (const component of components) {
-        await this.downloadAndInstallComponent(component);
-      }
+        const ffmpegResults = await DependencyResolver.resolveFFmpeg();
+        const ffmpegFailed = ffmpegResults.filter(r => !r.installed);
+        if (ffmpegFailed.length > 0) {
+          logger.warn('FFmpeg not found on PATH:', ffmpegFailed.map(r => r.name).join(', '));
+        }
+        this.sendProgress({ type: 'download', component: 'FFmpeg', progress: 80, message: 'FFmpeg detected' });
 
-      // Install vs-mlrt components using the unified manager
-      // ONNX Runtime (always needed)
-      if (!(await VsMlrtManager.isComponentInstalled('onnx-runtime'))) {
-        logger.dependency('Installing vs-mlrt ONNX Runtime');
-        await VsMlrtManager.downloadAndInstall('onnx-runtime', (progress) => {
-          this.sendProgress({
-            type: 'download',
-            component: VsMlrtManager.getComponentName('onnx-runtime'),
-            progress: progress.progress,
-            message: progress.message
-          });
-        });
+        const vsResult = await DependencyResolver.resolveVapourSynth();
+        if (!vsResult.installed) {
+          logger.warn('VapourSynth not found:', vsResult.guide);
+          this.sendProgress({ type: 'download', component: 'VapourSynth', progress: 85, message: 'VapourSynth detection warning' });
+        }
+
+        const vcResult = await DependencyResolver.resolveVideoCompare();
+        if (!vcResult.installed) {
+          logger.warn('video-compare not found:', vcResult.guide);
+        }
+
+        // Skip Windows downloads, go straight to models and config
+        this.sendProgress({ type: 'download', component: 'Platform Setup', progress: 90, message: 'Linux setup complete' });
+        logger.dependency(`Will ${hasCuda ? 'CHECK FOR' : 'SKIP'} TensorRT plugin`);
       } else {
-        logger.dependency('vs-mlrt ONNX Runtime already installed');
-      }
+        // Windows: existing download-based setup
+        logger.dependency(`Will ${hasCuda ? 'DOWNLOAD' : 'SKIP'} TensorRT plugin`);
+        
+        // Component configurations (non-vs-mlrt components)
+        const components: ComponentConfig[] = [
+          {
+            name: 'VapourSynth R72',
+            url: 'https://github.com/vapoursynth/vapoursynth/releases/download/R72/VapourSynth64-Portable-R72.zip',
+            archiveName: 'vs-portable.zip',
+            checkPath: PATHS.VSPIPE,
+            extractTo: PATHS.VS
+          },
+          {
+            name: 'BestSource R13',
+            url: 'https://github.com/vapoursynth/bestsource/releases/download/R13/BestSource-R13.7z',
+            archiveName: 'bestsource.7z',
+            checkPath: path.join(PATHS.PLUGINS, libName('bestsource')),
+            extractTo: PATHS.PLUGINS
+          },
+          {
+            name: 'Video Compare Tool',
+            url: 'https://github.com/pixop/video-compare/releases/download/20250928/video-compare-20250928-win10-x86_64.zip',
+            archiveName: 'video-compare.zip',
+            checkPath: PATHS.VIDEO_COMPARE_EXE,
+            extractTo: PATHS.VIDEO_COMPARE
+          }
+        ];
 
-      // TensorRT (only if CUDA is available)
-      if (hasCuda) {
-        logger.dependency('=== CUDA DETECTED - Installing TensorRT plugin ===');
+        // Check for vs-mlrt version change before installation
+        const storedVsMlrtVersion = configManager.getVsMlrtVersion();
+        const hasVsMlrtVersionChange = storedVsMlrtVersion && storedVsMlrtVersion !== VS_MLRT_VERSION;
         
-        // CRITICAL: Do NOT auto-update TensorRT if version changed and it's already installed
-        // This allows the user to be notified via modal and decide when to update
-        const isTensorRtInstalled = await VsMlrtManager.isComponentInstalled('tensorrt');
-        
-        if (hasVsMlrtVersionChange && isTensorRtInstalled) {
-          logger.dependency('TensorRT already installed with different version - skipping auto-update (user will be notified)');
-        } else if (!isTensorRtInstalled) {
-          await VsMlrtManager.downloadAndInstall('tensorrt', (progress) => {
+        if (hasCuda && hasVsMlrtVersionChange) {
+          logger.dependency(`=== vs-mlrt VERSION CHANGE DETECTED: ${storedVsMlrtVersion} → ${VS_MLRT_VERSION} ===`);
+          logger.dependency('User will be notified to rebuild TensorRT engines');
+        }
+
+        // Install standard components
+        for (const component of components) {
+          await this.downloadAndInstallComponent(component);
+        }
+
+        // Install vs-mlrt components using the unified manager
+        // ONNX Runtime (always needed)
+        if (!(await VsMlrtManager.isComponentInstalled('onnx-runtime'))) {
+          logger.dependency('Installing vs-mlrt ONNX Runtime');
+          await VsMlrtManager.downloadAndInstall('onnx-runtime', (progress) => {
             this.sendProgress({
               type: 'download',
-              component: VsMlrtManager.getComponentName('tensorrt'),
+              component: VsMlrtManager.getComponentName('onnx-runtime'),
               progress: progress.progress,
               message: progress.message
             });
           });
         } else {
-          logger.dependency('vs-mlrt TensorRT already installed');
+          logger.dependency('vs-mlrt ONNX Runtime already installed');
         }
-      } else {
-        logger.dependency('=== NO CUDA DETECTED - Skipping TensorRT plugin ===');
-      }
 
-      // Note: We intentionally do NOT update the stored vs-mlrt version here.
-      // The version check in the frontend (App.tsx) will detect the mismatch and
-      // show a notification modal if there are existing engine files that need rebuilding.
-      // The version is only updated after the user acknowledges the notification or
-      // clears their engines, ensuring they are informed of the change.
+        // TensorRT (only if CUDA is available)
+        if (hasCuda) {
+          logger.dependency('=== CUDA DETECTED - Installing TensorRT plugin ===');
+          
+          const storedVsMlrtVer = configManager.getVsMlrtVersion();
+          const hasVsMlrtVerChange = storedVsMlrtVer && storedVsMlrtVer !== VS_MLRT_VERSION;
+          
+          const isTensorRtInstalled = await VsMlrtManager.isComponentInstalled('tensorrt');
+          
+          if (hasVsMlrtVerChange && isTensorRtInstalled) {
+            logger.dependency('TensorRT already installed with different version - skipping auto-update');
+          } else if (!isTensorRtInstalled) {
+            await VsMlrtManager.downloadAndInstall('tensorrt', (progress) => {
+              this.sendProgress({
+                type: 'download',
+                component: VsMlrtManager.getComponentName('tensorrt'),
+                progress: progress.progress,
+                message: progress.message
+              });
+            });
+          } else {
+            logger.dependency('vs-mlrt TensorRT already installed');
+          }
+        } else {
+          logger.dependency('=== NO CUDA DETECTED - Skipping TensorRT plugin ===');
+        }
+
+        // Setup embedded Python (Windows only)
+        await this.setupEmbeddedPython();
+        
+        // Install FFmpeg if not present (Windows only)
+        if (!(await FFmpegManager.isInstalled())) {
+          logger.dependency('Installing standalone FFmpeg');
+          await FFmpegManager.install((message, progress) => {
+            this.sendProgress({
+              type: 'download',
+              component: 'FFmpeg',
+              progress,
+              message
+            });
+          });
+        } else {
+          logger.dependency('FFmpeg already installed');
+        }
+      }
       
-      // Setup embedded Python
-      await this.setupEmbeddedPython();
-      
-      // Extract bundled ONNX models to AppData
+      // Shared: Extract bundled ONNX models to AppData (platform independent)
       if (await this.modelExtractor.needsExtraction()) {
         logger.dependency('Extracting bundled ONNX models');
         await this.modelExtractor.extractModels((message, progress) => {
@@ -533,21 +596,6 @@ export class DependencyManager {
         });
       } else {
         logger.dependency('ONNX models already extracted');
-      }
-
-      // Install FFmpeg if not present
-      if (!(await FFmpegManager.isInstalled())) {
-        logger.dependency('Installing standalone FFmpeg');
-        await FFmpegManager.install((message, progress) => {
-          this.sendProgress({
-            type: 'download',
-            component: 'FFmpeg',
-            progress,
-            message
-          });
-        });
-      } else {
-        logger.dependency('FFmpeg already installed');
       }
 
       // Plugin install runs after this method returns, orchestrated by the
