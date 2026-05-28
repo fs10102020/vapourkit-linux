@@ -1,11 +1,12 @@
 import { memo } from 'react';
 import { Loader2, Info, Sparkles, Lock } from 'lucide-react';
-import type { ModelImportProgress } from '../electron.d';
+import type { ModelImportProgress, InferenceBackend } from '../electron.d';
 
 interface AutoBuildModalProps {
   show: boolean;
   modelName: string;
   modelType: 'vsr' | 'image';
+  backend: InferenceBackend;
   progress: ModelImportProgress | null;
   isStatic?: boolean;
   staticShape?: string | null;
@@ -15,6 +16,7 @@ export const AutoBuildModal = memo<AutoBuildModalProps>(({
   show,
   modelName,
   modelType,
+  backend,
   progress,
   isStatic = false,
   staticShape = null,
@@ -43,7 +45,7 @@ export const AutoBuildModal = memo<AutoBuildModalProps>(({
         <div className="flex items-center justify-between p-6 border-b border-gray-800">
           <div className="flex items-center gap-3">
             <Sparkles className="w-6 h-6 text-yellow-400" />
-            <h2 className="text-2xl font-bold">Building TensorRT Engine</h2>
+            <h2 className="text-2xl font-bold">{backend === 'tensorrt' ? 'Building TensorRT Engine' : 'Preparing Model'}</h2>
           </div>
         </div>
 
@@ -135,9 +137,9 @@ export const AutoBuildModal = memo<AutoBuildModalProps>(({
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-gray-300">
-                <p className="font-medium mb-1">Building with preconfigured settings</p>
+                <p className="font-medium mb-1">{backend === 'tensorrt' ? 'Building with preconfigured settings' : 'Preparing with preconfigured settings'}</p>
                 <p className="text-xs text-gray-400">
-                  The TensorRT engine is being optimized for your GPU. This is a one-time process per model.
+                  {backend === 'tensorrt' ? 'The TensorRT engine is being optimized for your GPU. This is a one-time process per model.' : 'The model is being prepared with ONNX Runtime.'}
                   {isVideoModel && ' This model processes 5-frame temporal sequences for better video quality.'}
                   {isStatic && ' Static models are optimized for a single resolution.'}
                 </p>

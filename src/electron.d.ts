@@ -1,10 +1,15 @@
 // src/electron.d.ts
+import { InferenceBackend, BackendCapabilities } from './types/backend';
+
+export type { InferenceBackend, BackendCapabilities };
+
 export interface ElectronAPI {
   // Dependency management
   checkDependencies: () => Promise<boolean>;
   setupDependencies: () => Promise<{ success: boolean; error?: string }>;
   onSetupProgress: (callback: (progress: SetupProgress) => void) => () => void;
   detectCudaSupport: () => Promise<boolean>;
+  getBackendCapabilities: () => Promise<BackendCapabilities>;
   getGpuStats: () => Promise<{ gpuMemoryUsed: number; gpuMemoryTotal: number; gpuUtilization: number } | null>;
   
   // Video operations
@@ -19,7 +24,7 @@ export interface ElectronAPI {
   getOutputResolution: (
     videoPath: string,
     modelPath: string | null,
-    useDirectML?: boolean,
+    backend?: InferenceBackend,
     upscalingEnabled?: boolean,
     filters?: Filter[],
     upscalePosition?: number,
@@ -58,7 +63,7 @@ export interface ElectronAPI {
     videoPath: string,
     modelPath: string | null,
     outputPath: string,
-    useDirectML?: boolean,
+    backend?: InferenceBackend,
     upscalingEnabled?: boolean,
     filters?: Filter[],
     upscalePosition?: number,
@@ -69,7 +74,7 @@ export interface ElectronAPI {
   previewSegment: (
     videoPath: string,
     modelPath: string | null,
-    useDirectML?: boolean,
+    backend?: InferenceBackend,
     upscalingEnabled?: boolean,
     filters?: Filter[],
     numStreams?: number,
@@ -84,7 +89,7 @@ export interface ElectronAPI {
   launchVsePreviewer: (
     videoPath: string,
     modelPath: string | null,
-    useDirectML?: boolean,
+    backend?: InferenceBackend,
     upscalingEnabled?: boolean,
     filters?: Filter[],
     numStreams?: number,
@@ -329,7 +334,7 @@ export interface ImportModelParams {
   useBf16?: boolean;
   modelType?: 'vsr' | 'image';
   temporalFrames?: number;
-  useDirectML?: boolean;
+  backend?: InferenceBackend;
   displayTag?: string;
   useStaticShape?: boolean;
   useCustomTrtexecParams?: boolean;
@@ -474,7 +479,7 @@ export interface QueueItem {
     processingFormat: string;
     outputFormat: string;
     videoCompareArgs: string;
-    useDirectML: boolean;
+    backend: InferenceBackend;
     numStreams: number;
     segment?: SegmentSelection;
     colorimetry?: ColorimetrySettings;

@@ -1,6 +1,6 @@
 // src/hooks/useWorkflow.ts
 import { useState, useCallback } from 'react';
-import type { Filter, FilterTemplate, WorkflowData, SegmentSelection, ColorimetrySettings } from '../electron.d';
+import type { Filter, FilterTemplate, WorkflowData, SegmentSelection, ColorimetrySettings, InferenceBackend } from '../electron.d';
 import { getErrorMessage } from '../types/errors';
 import { getPortableModelName, resolvePortableModelName } from '../utils/modelUtils';
 import { notify } from '../utils/notifications';
@@ -46,7 +46,7 @@ interface UseWorkflowProps {
   processingFormat?: string;
   outputFormat?: string;
   videoCompareArgs?: string;
-  useDirectML?: boolean;
+  backend?: InferenceBackend;
   numStreams?: number;
   segment?: SegmentSelection;
   colorimetry?: ColorimetrySettings;
@@ -54,7 +54,7 @@ interface UseWorkflowProps {
   setProcessingFormat?: (format: string) => void;
   setOutputFormat?: (format: string) => void;
   setVideoCompareArgs?: (args: string) => void;
-  toggleDirectML?: (value: boolean) => void;
+  setBackend?: (value: InferenceBackend) => void;
   updateNumStreams?: (streams: number) => void;
   setSegment?: (segment: SegmentSelection) => void;
   handleColorimetryChange?: (settings: ColorimetrySettings) => void;

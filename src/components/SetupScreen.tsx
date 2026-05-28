@@ -1,12 +1,12 @@
 import { memo, useMemo } from 'react';
 import { Loader2, Download, XCircle, CheckCircle2 } from 'lucide-react';
-import type { SetupProgress } from '../electron.d';
+import type { SetupProgress, BackendCapabilities } from '../electron.d';
 import { Logo } from './Logo';
 
 interface SetupScreenProps {
   isCheckingDeps: boolean;
   isSetupComplete: boolean;
-  hasCudaSupport: boolean | null;
+  backendCapabilities: BackendCapabilities | null;
   setupProgress: SetupProgress | null;
   isSettingUp: boolean;
   onSetup: () => Promise<void>;
@@ -18,7 +18,7 @@ interface SetupScreenProps {
 export const SetupScreen = memo<SetupScreenProps>(({
   isCheckingDeps,
   isSetupComplete,
-  hasCudaSupport,
+  backendCapabilities,
   setupProgress,
   isSettingUp,
   onSetup,
@@ -34,10 +34,10 @@ export const SetupScreen = memo<SetupScreenProps>(({
       { id: 'vapoursynth', name: 'VapourSynth Portable R72', description: 'Video processing framework', component: 'VapourSynth R72' },
       { id: 'bestsource', name: 'BestSource R13', description: 'Video source filter', component: 'BestSource R13' },
       { id: 'video-compare', name: 'Video Compare Tool', description: 'Side-by-side comparison viewer', component: 'Video Compare Tool' },
-      { id: 'onnx', name: 'vs-mlrt ONNX Runtime Plugin v15.13', description: 'DirectML support (AMD/Intel/NVIDIA GPUs)', component: 'vs-mlrt ONNX Runtime' },
+      { id: 'onnx', name: 'vs-mlrt ONNX Runtime Plugin v15.13', description: 'ONNX Runtime support (CPU/CUDA acceleration)', component: 'vs-mlrt ONNX Runtime' },
     ];
 
-    if (hasCudaSupport) {
+    if (backendCapabilities?.tensorrtAvailable) {
       steps.splice(4, 0, {
         id: 'tensorrt',
         name: 'vs-mlrt TensorRT Plugin v15.13',
@@ -54,7 +54,7 @@ export const SetupScreen = memo<SetupScreenProps>(({
     );
 
     return steps;
-  }, [hasCudaSupport]);
+  }, [backendCapabilities]);
 
   // Track which steps are completed, in progress, or pending
   const stepStatuses = useMemo(() => {

@@ -1,34 +1,29 @@
-import type { ModelFile } from '../electron.d';
+import type { ModelFile, InferenceBackend } from '../electron.d';
 
 /**
  * Filters and sorts models based on the current backend.
  * 
  * Rules:
- * - DirectML mode: Show only ONNX models
  * - TensorRT mode: Show ALL models (engines + all ONNX for rebuilding)
  * - TensorRT mode: Engines are always sorted to the top
+ * - All other backends: Show only ONNX models
  */
 export function filterModels(
   models: ModelFile[],
-  useDirectML: boolean
+  backend: InferenceBackend
 ): ModelFile[] {
   const filtered = models.filter(model => {
-    if (useDirectML) {
-      // DirectML: Only show ONNX models
-      return model.backend === 'onnx';
-    } else {
-      // TensorRT mode: Show engines + all ONNX (allows rebuilding)
+    if (backend === 'tensorrt') {
       return model.backend === 'tensorrt' || model.backend === 'onnx';
+    } else {
+      return model.backend === 'onnx';
     }
   });
 
-  // In TensorRT mode, sort engines to the top
-  if (!useDirectML) {
+  if (backend === 'tensorrt') {
     return filtered.sort((a, b) => {
-      // TensorRT engines first
       if (a.backend === 'tensorrt' && b.backend !== 'tensorrt') return -1;
       if (a.backend !== 'tensorrt' && b.backend === 'tensorrt') return 1;
-      // Maintain original order for same backend type
       return 0;
     });
   }
@@ -40,23 +35,20 @@ export function filterModels(
  * Gets the display name for a model with appropriate labels.
  * 
  * Rules:
- * - DirectML mode: Show name with display tag if available
  * - TensorRT mode: Add [Unbuilt] prefix for ONNX without engines
+ * - All other backends: Show name with display tag if available
  */
 export function getModelDisplayName(
   model: ModelFile,
-  useDirectML: boolean
+  backend: InferenceBackend
 ): string {
-  // Build display name: base name + optional display tag
   let displayName = model.name;
   
-  // Add display tag if available
   if (model.displayTag) {
     displayName = `${displayName} [${model.displayTag}]`;
   }
   
-  // Add [Unbuilt] label in TensorRT mode for ONNX without engines
-  if (!useDirectML && model.backend === 'onnx' && !model.hasEngine) {
+  if (backend === 'tensorrt' && model.backend === 'onnx' && !model.hasEngine) {
     displayName = '[Unbuilt] ' + displayName;
   }
   
@@ -69,9 +61,9 @@ export function getModelDisplayName(
  */
 export function modelNeedsBuild(
   model: ModelFile | null,
-  useDirectML: boolean
+  backend: InferenceBackend
 ): boolean {
-  if (!model || useDirectML) {
+  if (!model || backend !== 'tensorrt') {
     return false;
   }
   
@@ -80,17 +72,16 @@ export function modelNeedsBuild(
 
 /**
  * Checks if a model should show the build notification.
- * Shows notification for ANY ONNX model (allows rebuilding).
+ * Shows notification for ANY ONNX model (allows rebuilding) only in TensorRT mode.
  */
 export function shouldShowBuildNotification(
   model: ModelFile | null,
-  useDirectML: boolean
+  backend: InferenceBackend
 ): boolean {
-  if (!model || useDirectML) {
+  if (!model || backend !== 'tensorrt') {
     return false;
   }
   
-  // Show notification for ANY ONNX model (allows rebuilding)
   return model.backend === 'onnx';
 }
 

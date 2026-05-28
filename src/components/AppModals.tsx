@@ -9,7 +9,7 @@ import { PluginsModal } from './PluginsModal';
 import { UpdateNotificationModal } from './UpdateNotificationModal';
 import { VsMlrtUpdateModal } from './VsMlrtUpdateModal';
 import { FilterImportModal } from './FilterImportModal';
-import type { UpdateInfo, VsMlrtVersionInfo } from '../electron';
+import type { UpdateInfo, VsMlrtVersionInfo, InferenceBackend } from '../electron';
 
 interface AppModalsProps {
   // Import Model
@@ -28,7 +28,7 @@ interface AppModalsProps {
   handleTemporalFramesChange: (frames: number) => void;
   importProgress: any;
   modalMode: 'import' | 'build';
-  useDirectML: boolean;
+  backend: InferenceBackend;
 
   // Auto Build
   showAutoBuildModal: boolean;
@@ -42,7 +42,7 @@ interface AppModalsProps {
   onCloseSettings: () => void;
   numStreams: number;
   onUpdateNumStreams: (streams: number) => void;
-  onToggleDirectML: (value: boolean) => void;
+  onSetBackend: (backend: InferenceBackend) => void;
   videoCompareArgs: string;
   onUpdateVideoCompareArgs: (args: string) => void;
   onResetVideoCompareArgs: () => void;
@@ -97,13 +97,14 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
         handleTemporalFramesChange={props.handleTemporalFramesChange}
         importProgress={props.importProgress}
         mode={props.modalMode}
-        useDirectML={props.useDirectML}
+        backend={props.backend}
       />
 
       <AutoBuildModal
         show={props.showAutoBuildModal}
         modelName={props.autoBuildModelName}
         modelType={props.autoBuildModelType}
+        backend={props.backend}
         progress={props.importProgress}
         isStatic={props.autoBuildIsStatic}
         staticShape={props.autoBuildStaticShape}
@@ -112,8 +113,8 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
       <SettingsModal
         show={props.showSettings}
         onClose={props.onCloseSettings}
-        useDirectML={props.useDirectML}
-        onToggleDirectML={props.onToggleDirectML}
+        backend={props.backend}
+        onSetBackend={props.onSetBackend}
         numStreams={props.numStreams}
         onUpdateNumStreams={props.onUpdateNumStreams}
         videoCompareArgs={props.videoCompareArgs}

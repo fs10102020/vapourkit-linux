@@ -26,12 +26,14 @@ export interface SegmentSelection {
   endFrame: number; // -1 means end of video
 }
 
+export type InferenceBackend = 'directml' | 'tensorrt' | 'onnxruntime-cuda' | 'onnxruntime-cpu';
+
 export interface ScriptConfig {
   inputVideo: string;
   enginePath: string;
   pluginsPath: string;
   outputPath?: string;
-  useDirectML?: boolean;
+  backend?: string;
   useFp32?: boolean;
   modelType?: ModelType;
   upscalingEnabled?: boolean;
@@ -114,7 +116,7 @@ export class VapourSynthScriptGenerator {
         const filterUseFp32 = configManager.isModelFp32(filter.modelPath);
         const filterModelType = configManager.getModelType(filter.modelPath);
         const filterTemporalFrames = configManager.getTemporalFrames(filter.modelPath);
-        filterCode += this.generateAIModelCode(filter, config.useDirectML || false, filterUseFp32, filterModelType, defaultMatrix, defaultPrimaries, defaultTransfer, config.numStreams, filterTemporalFrames);
+        filterCode += this.generateAIModelCode(filter, config.backend || 'tensorrt', filterUseFp32, filterModelType, defaultMatrix, defaultPrimaries, defaultTransfer, config.numStreams, filterTemporalFrames);
       } else if (filter.filterType === 'custom' && filter.code.trim()) {
         // Insert custom filter code
         filterCode += '# Custom Filter: ' + (filter.preset || 'Unnamed') + '\n';
@@ -159,7 +161,7 @@ export class VapourSynthScriptGenerator {
   /**
    * Generate VapourSynth code for an AI model filter
    */
-  private generateAIModelCode(filter: Filter, useDirectML: boolean, useFp32: boolean, modelType: ModelType, defaultMatrix: string, defaultPrimaries: string, defaultTransfer: string, numStreams?: number, temporalFrames?: number): string {
+  private generateAIModelCode(filter: Filter, backend: string, useFp32: boolean, modelType: ModelType, defaultMatrix: string, defaultPrimaries: string, defaultTransfer: string, numStreams?: number, temporalFrames?: number): string {
     if (!filter.modelPath) return '';
     
     // Constants for VapourSynth variable names
@@ -185,12 +187,24 @@ export class VapourSynthScriptGenerator {
     let modelPath: string;
     let fp16Param: string;
     
-    if (useDirectML) {
+    if (backend === 'directml') {
       modelPlugin = 'ort';
       modelPathParam = 'network_path';
       modelPath = filter.modelPath.replace(/\.engine$/, '.onnx');
       const useFp16 = !useFp32;
       fp16Param = `, provider="DML", device_id=0, fp16=${useFp16 ? 'True' : 'False'}, verbosity=4`;
+    } else if (backend === 'onnxruntime-cuda') {
+      modelPlugin = 'ort';
+      modelPathParam = 'network_path';
+      modelPath = filter.modelPath.replace(/\.engine$/, '.onnx');
+      const useFp16 = !useFp32;
+      fp16Param = `, provider="CUDA", device_id=0, fp16=${useFp16 ? 'True' : 'False'}, verbosity=4`;
+    } else if (backend === 'onnxruntime-cpu') {
+      modelPlugin = 'ort';
+      modelPathParam = 'network_path';
+      modelPath = filter.modelPath.replace(/\.engine$/, '.onnx');
+      const useFp16 = !useFp32;
+      fp16Param = `, provider="CPU", fp16=${useFp16 ? 'True' : 'False'}, verbosity=4`;
     } else {
       modelPlugin = 'trt';
       modelPathParam = 'engine_path';

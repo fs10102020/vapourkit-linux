@@ -1,7 +1,7 @@
 // src/hooks/useQueueStore.ts - Consolidated queue data layer (merged from useQueueState + useQueueManagement)
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { QueueItem, Filter, SegmentSelection } from '../electron.d';
+import type { QueueItem, Filter, SegmentSelection, InferenceBackend } from '../electron.d';
 import { generateOutputSuffix } from '../utils/generateOutputSuffix';
 
 interface UseQueueStoreProps {
@@ -124,7 +124,7 @@ export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQue
       processingFormat: string;
       outputFormat: string;
       videoCompareArgs: string;
-      useDirectML: boolean;
+      backend: InferenceBackend;
       numStreams: number;
       segment?: SegmentSelection;
       colorimetry?: any;
@@ -178,7 +178,7 @@ export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQue
             processingFormat: currentWorkflow.processingFormat,
             outputFormat: currentWorkflow.outputFormat,
             videoCompareArgs: currentWorkflow.videoCompareArgs,
-            useDirectML: currentWorkflow.useDirectML,
+            backend: currentWorkflow.backend,
             numStreams: currentWorkflow.numStreams,
             segment: currentWorkflow.segment ? { ...currentWorkflow.segment } : undefined,
             colorimetry: currentWorkflow.colorimetry,

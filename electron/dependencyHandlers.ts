@@ -5,6 +5,7 @@ import { detectCudaSupport, pollGpuStats } from './utils';
 import { createIpcHandler } from './ipcUtilities';
 import { DependencyManager } from './dependencyManager';
 import { PluginInstaller } from './pluginInstaller';
+import { isWindows, isLinux } from './platform';
 
 /**
  * Registers all dependency and plugin-related IPC handlers
@@ -28,6 +29,45 @@ export function registerDependencyHandlers(
         const hasCuda = await detectCudaSupport();
         logger.info(`CUDA detection result: ${hasCuda}`);
         return hasCuda;
+      },
+      { logResult: true }
+    )
+  );
+
+  ipcMain.handle('get-backend-capabilities',
+    createIpcHandler(
+      'get-backend-capabilities',
+      async () => {
+        const hasCuda = await detectCudaSupport();
+        const directmlAvailable = isWindows;
+        const tensorrtAvailable = hasCuda;
+        const onnxRuntimeCudaAvailable = hasCuda;
+        const onnxRuntimeCpuAvailable = true;
+
+        const supportedBackends: string[] = [];
+        if (directmlAvailable) supportedBackends.push('directml');
+        if (tensorrtAvailable) supportedBackends.push('tensorrt');
+        if (onnxRuntimeCudaAvailable) supportedBackends.push('onnxruntime-cuda');
+        if (onnxRuntimeCpuAvailable) supportedBackends.push('onnxruntime-cpu');
+
+        let recommendedBackend: string;
+        if (isWindows) {
+          recommendedBackend = hasCuda ? 'tensorrt' : 'directml';
+        } else {
+          recommendedBackend = hasCuda ? 'tensorrt' : 'onnxruntime-cpu';
+        }
+
+        return {
+          platform: process.platform,
+          cudaAvailable: hasCuda,
+          nvidiaGpuAvailable: hasCuda,
+          directmlAvailable,
+          tensorrtAvailable,
+          onnxRuntimeCudaAvailable,
+          onnxRuntimeCpuAvailable,
+          supportedBackends,
+          recommendedBackend,
+        };
       },
       { logResult: true }
     )

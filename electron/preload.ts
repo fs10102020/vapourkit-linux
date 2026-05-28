@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dependency management
   checkDependencies: () => ipcRenderer.invoke('check-dependencies'),
   detectCudaSupport: () => ipcRenderer.invoke('detect-cuda-support'),
+  getBackendCapabilities: () => ipcRenderer.invoke('get-backend-capabilities'),
   getGpuStats: () => ipcRenderer.invoke('get-gpu-stats'),
   setupDependencies: () => ipcRenderer.invoke('setup-dependencies'),
   onSetupProgress: (callback: (progress: any) => void) => {
@@ -26,8 +27,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readVideoFile: (filePath: string) => ipcRenderer.invoke('read-video-file', filePath),
   getVideoThumbnail: (filePath: string) => ipcRenderer.invoke('get-video-thumbnail', filePath),
   getVideoFrameAt: (filePath: string, frameNumber: number, fps: number) => ipcRenderer.invoke('get-video-frame-at', filePath, frameNumber, fps),
-  getOutputResolution: (videoPath: string, modelPath: string | null, useDirectML?: boolean, upscalingEnabled?: boolean, filters?: any, upscalePosition?: number, numStreams?: number, sourceFps?: number) =>
-    ipcRenderer.invoke('get-output-resolution', videoPath, modelPath, useDirectML, upscalingEnabled, filters, upscalePosition, numStreams, sourceFps),
+  getOutputResolution: (videoPath: string, modelPath: string | null, backend?: string, upscalingEnabled?: boolean, filters?: any, upscalePosition?: number, numStreams?: number, sourceFps?: number) =>
+    ipcRenderer.invoke('get-output-resolution', videoPath, modelPath, backend, upscalingEnabled, filters, upscalePosition, numStreams, sourceFps),
   cancelValidation: () => ipcRenderer.invoke('cancel-validation'),
   getFilePathFromFile: (file: File) => webUtils.getPathForFile(file),
   
@@ -61,10 +62,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Upscaling operations
   selectOutputFile: (defaultName: string) => ipcRenderer.invoke('select-output-file', defaultName),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
-  startUpscale: (videoPath: string, modelPath: string, outputPath: string, useDirectML?: boolean, upscalingEnabled?: boolean, filters?: any, upscalePosition?: number, numStreams?: number, segment?: any, benchmarkMode?: boolean) =>
-    ipcRenderer.invoke('start-upscale', videoPath, modelPath, outputPath, useDirectML, upscalingEnabled, filters, upscalePosition, numStreams, segment, benchmarkMode),
-  previewSegment: (videoPath: string, modelPath: string | null, useDirectML?: boolean, upscalingEnabled?: boolean, filters?: any, numStreams?: number, startFrame?: number, endFrame?: number) =>
-    ipcRenderer.invoke('preview-segment', videoPath, modelPath, useDirectML, upscalingEnabled, filters, numStreams, startFrame, endFrame),
+  startUpscale: (videoPath: string, modelPath: string, outputPath: string, backend?: string, upscalingEnabled?: boolean, filters?: any, upscalePosition?: number, numStreams?: number, segment?: any, benchmarkMode?: boolean) =>
+    ipcRenderer.invoke('start-upscale', videoPath, modelPath, outputPath, backend, upscalingEnabled, filters, upscalePosition, numStreams, segment, benchmarkMode),
+  previewSegment: (videoPath: string, modelPath: string | null, backend?: string, upscalingEnabled?: boolean, filters?: any, numStreams?: number, startFrame?: number, endFrame?: number) =>
+    ipcRenderer.invoke('preview-segment', videoPath, modelPath, backend, upscalingEnabled, filters, numStreams, startFrame, endFrame),
   cancelUpscale: () => ipcRenderer.invoke('cancel-upscale'),
   killUpscale: () => ipcRenderer.invoke('kill-upscale'),
   onUpscaleProgress: (callback: (progress: any) => void) => {
@@ -77,12 +78,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   launchVsePreviewer: (
     videoPath: string,
     modelPath: string | null,
-    useDirectML?: boolean,
+    backend?: string,
     upscalingEnabled?: boolean,
     filters?: any[],
     numStreams?: number,
     segment?: { enabled: boolean; startFrame: number; endFrame: number }
-  ) => ipcRenderer.invoke('launch-vse-previewer', videoPath, modelPath, useDirectML, upscalingEnabled, filters, numStreams, segment),
+  ) => ipcRenderer.invoke('launch-vse-previewer', videoPath, modelPath, backend, upscalingEnabled, filters, numStreams, segment),
   
   // Shell operations
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),

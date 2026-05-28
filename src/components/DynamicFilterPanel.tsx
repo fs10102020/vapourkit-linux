@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useRef } from 'react';
 import { GripVertical, X, Plus, ChevronDown, ChevronUp, Save, Trash2, Download, Filter as LucideFilter, Info, Sparkles, ToggleLeft, ToggleRight, Copy, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
-import type { Filter, FilterTemplate, ModelFile } from '../electron.d';
+import type { Filter, FilterTemplate, ModelFile, InferenceBackend } from '../electron.d';
 import { PythonCodeEditor } from './PythonCodeEditor';
 import { FilterSelectorModal } from './FilterSelectorModal';
 import { ModelSelectorModal } from './ModelSelectorModal';
@@ -12,7 +12,7 @@ interface DynamicFilterPanelProps {
   filterTemplates: FilterTemplate[];
   isProcessing: boolean;
   availableModels?: ModelFile[];
-  useDirectML?: boolean;
+  backend?: InferenceBackend;
   onFiltersChange: (filters: Filter[]) => void;
   onSaveTemplate?: (template: FilterTemplate) => Promise<boolean>;
   onDeleteTemplate?: (name: string) => Promise<boolean>;
@@ -30,7 +30,7 @@ export const DynamicFilterPanel = memo<DynamicFilterPanelProps>(({
   filterTemplates,
   isProcessing,
   availableModels = [],
-  useDirectML = false,
+  backend = 'onnxruntime-cpu',
   onFiltersChange,
   onSaveTemplate,
   onDeleteTemplate,
@@ -962,7 +962,7 @@ export const DynamicFilterPanel = memo<DynamicFilterPanelProps>(({
           isOpen={true}
           onClose={() => setShowModelSelector(null)}
           availableModels={availableModels}
-          useDirectML={useDirectML}
+          backend={backend}
           currentSelection={pendingFilters.find(f => f.id === showModelSelector)?.modelPath || ''}
           onSelectModel={(modelPath) => {
             if (showModelSelector) {

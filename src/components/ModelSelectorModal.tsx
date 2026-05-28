@@ -1,13 +1,13 @@
 import { memo, useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X, Star, Clock, Cpu, ChevronRight, Trash2, Edit3, Download } from 'lucide-react';
-import type { ModelFile } from '../electron.d';
+import type { ModelFile, InferenceBackend } from '../electron.d';
 import { getModelDisplayName, filterModels, getPortableModelName } from '../utils/modelUtils';
 
 interface ModelSelectorModalProps {
   isOpen: boolean;
   onClose: () => void;
   availableModels: ModelFile[];
-  useDirectML: boolean;
+  backend: InferenceBackend;
   onSelectModel: (modelPath: string) => void;
   onEditModel?: (model: ModelFile) => void;
   onImportModel?: () => void;
@@ -66,7 +66,7 @@ export const ModelSelectorModal = memo<ModelSelectorModalProps>(({
   isOpen,
   onClose,
   availableModels,
-  useDirectML,
+  backend,
   onSelectModel,
   onEditModel,
   onImportModel,
@@ -111,7 +111,7 @@ export const ModelSelectorModal = memo<ModelSelectorModalProps>(({
   const isEngineFile = (modelPath: string): boolean => /\.engine$/i.test(modelPath);
 
   // Filter models based on backend setting (ONNX mode hides TensorRT engines, etc.)
-  const globalFilteredModels = useMemo(() => filterModels(availableModels, useDirectML), [availableModels, useDirectML]);
+  const globalFilteredModels = useMemo(() => filterModels(availableModels, backend), [availableModels, backend]);
   const backendFilteredModels = useMemo(() => {
     // Apply the user's local backend filter within the modal
     if (selectedBackend === 'all') return globalFilteredModels;
@@ -830,7 +830,7 @@ export const ModelSelectorModal = memo<ModelSelectorModalProps>(({
             <div className="w-56 border-r border-gray-800 overflow-y-auto bg-dark-surface">
               <div className="p-3">
                 {/* Backend Filter - only show when multiple backends are available */}
-                {!useDirectML && backendCounts.tensorrt > 0 && backendCounts.onnx > 0 && (
+                {backendCounts.tensorrt > 0 && backendCounts.onnx > 0 && (
                   <>
                     <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                       Backend
@@ -840,23 +840,23 @@ export const ModelSelectorModal = memo<ModelSelectorModalProps>(({
                         { key: 'all' as const, label: 'All Backends', count: backendCounts.all },
                         { key: 'tensorrt' as const, label: 'TensorRT', count: backendCounts.tensorrt },
                         { key: 'onnx' as const, label: 'ONNX', count: backendCounts.onnx },
-                      ]).filter(b => b.count > 0).map(backend => (
+                      ]).filter(b => b.count > 0).map(be => (
                         <button
-                          key={backend.key}
-                          onClick={() => setSelectedBackend(backend.key)}
+                          key={be.key}
+                          onClick={() => setSelectedBackend(be.key)}
                           className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between group ${
-                            selectedBackend === backend.key
+                            selectedBackend === be.key
                               ? 'bg-purple-500/65 text-white'
                               : 'text-gray-300 hover:bg-dark-elevated hover:text-white'
                           }`}
                         >
-                          <span className="truncate">{backend.label}</span>
+                          <span className="truncate">{be.label}</span>
                           <span className={`text-xs ${
-                            selectedBackend === backend.key
+                            selectedBackend === be.key
                               ? 'text-purple-200'
                               : 'text-gray-500 group-hover:text-gray-400'
                           }`}>
-                            {backend.count}
+                            {be.count}
                           </span>
                         </button>
                       ))}
@@ -964,7 +964,7 @@ export const ModelSelectorModal = memo<ModelSelectorModalProps>(({
                         key={model.path}
                         model={model}
                         matchingEngineModels={model.backend === 'onnx' ? (engineModelsByPortableName.get(getPortableModelName(model.path)) || []) : []}
-                        useDirectML={useDirectML}
+                        backend={backend}
                         isFavorite={true}
                         onToggleFavorite={toggleFavorite}
                         onSelect={handleSelectModel}
@@ -991,7 +991,7 @@ export const ModelSelectorModal = memo<ModelSelectorModalProps>(({
                         key={model.path}
                         model={model}
                         matchingEngineModels={model.backend === 'onnx' ? (engineModelsByPortableName.get(getPortableModelName(model.path)) || []) : []}
-                        useDirectML={useDirectML}
+                        backend={backend}
                         isFavorite={favorites.has(model.path)}
                         onToggleFavorite={toggleFavorite}
                         onSelect={handleSelectModel}
@@ -1040,7 +1040,7 @@ export const ModelSelectorModal = memo<ModelSelectorModalProps>(({
                         key={model.path}
                         model={model}
                         matchingEngineModels={model.backend === 'onnx' ? (engineModelsByPortableName.get(getPortableModelName(model.path)) || []) : []}
-                        useDirectML={useDirectML}
+                        backend={backend}
                         isFavorite={favorites.has(model.path)}
                         onToggleFavorite={toggleFavorite}
                         onSelect={handleSelectModel}
@@ -1081,7 +1081,7 @@ ModelSelectorModal.displayName = 'ModelSelectorModal';
 interface ModelItemProps {
   model: ModelFile;
   matchingEngineModels: ModelFile[];
-  useDirectML: boolean;
+  backend: InferenceBackend;
   isFavorite: boolean;
   isSelected: boolean;
   onToggleFavorite: (path: string) => void;
@@ -1093,7 +1093,7 @@ interface ModelItemProps {
 const ModelItem = memo<ModelItemProps>(({
   model,
   matchingEngineModels,
-  useDirectML,
+  backend,
   isFavorite,
   isSelected,
   onToggleFavorite,
@@ -1103,7 +1103,7 @@ const ModelItem = memo<ModelItemProps>(({
 }) => {
   const [showMatchingEngines, setShowMatchingEngines] = useState(false);
   const hasMatchingEngines = matchingEngineModels.length > 0;
-  const displayName = getModelDisplayName(model, useDirectML);
+  const displayName = getModelDisplayName(model, backend);
   const isUnbuilt = displayName.startsWith('[Unbuilt] ') && !hasMatchingEngines;
   const cleanDisplayName = displayName.startsWith('[Unbuilt] ') ? displayName.replace(/^\[Unbuilt\]\s+/, '') : displayName;
   const userCategoryBadges = filterCategoryBadges(model.category);

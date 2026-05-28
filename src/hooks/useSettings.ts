@@ -1,13 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
+import type { InferenceBackend } from '../electron.d';
 
-export const useSettings = (hasCudaSupport: boolean | null) => {
-  const [useDirectML, setUseDirectML] = useState(() => {
-    const saved = localStorage.getItem('useDirectML');
-    if (saved !== null) {
-      return JSON.parse(saved);
+export const useSettings = (hasCudaSupport: boolean | null, isWindows: boolean) => {
+  const [backend, setBackend] = useState<InferenceBackend>(() => {
+    // Try new key first
+    const saved = localStorage.getItem('inferenceBackend');
+    if (saved) {
+      try { return JSON.parse(saved) as InferenceBackend; } catch {}
     }
-    // Default to false (use TensorRT) when CUDA is available
-    return !hasCudaSupport;
+    // Migrate old useDirectML key
+    const oldDml = localStorage.getItem('useDirectML');
+    if (oldDml !== null) {
+      const useDirectML = JSON.parse(oldDml);
+      if (useDirectML) {
+        return isWindows ? 'directml' : 'onnxruntime-cpu';
+      }
+      return 'tensorrt';
+    }
+    // Default
+    if (isWindows) {
+      return hasCudaSupport ? 'tensorrt' : 'directml';
+    }
+    return hasCudaSupport ? 'tensorrt' : 'onnxruntime-cpu';
   });
 
   const [numStreams, setNumStreams] = useState(() => {
@@ -15,35 +29,33 @@ export const useSettings = (hasCudaSupport: boolean | null) => {
     if (saved !== null) {
       return parseInt(saved, 10);
     }
-    // Default to 2 streams for TensorRT
     return 2;
   });
 
-  // Update DirectML setting when CUDA support is detected
   useEffect(() => {
     if (hasCudaSupport !== null) {
-      const saved = localStorage.getItem('useDirectML');
+      const saved = localStorage.getItem('inferenceBackend');
       if (saved === null) {
-        // First time initialization - set based on CUDA support
-        const shouldUseDirectML = !hasCudaSupport;
-        setUseDirectML(shouldUseDirectML);
-        localStorage.setItem('useDirectML', JSON.stringify(shouldUseDirectML));
+        const defaultBackend: InferenceBackend = isWindows
+          ? (hasCudaSupport ? 'tensorrt' : 'directml')
+          : (hasCudaSupport ? 'tensorrt' : 'onnxruntime-cpu');
+        setBackend(defaultBackend);
+        localStorage.setItem('inferenceBackend', JSON.stringify(defaultBackend));
       }
     }
-  }, [hasCudaSupport]);
+  }, [hasCudaSupport, isWindows]);
 
-  // Persist DirectML setting to localStorage
   useEffect(() => {
-    localStorage.setItem('useDirectML', JSON.stringify(useDirectML));
-  }, [useDirectML]);
+    localStorage.setItem('inferenceBackend', JSON.stringify(backend));
+    localStorage.removeItem('useDirectML');
+  }, [backend]);
 
-  // Persist num_streams setting to localStorage
   useEffect(() => {
     localStorage.setItem('numStreams', numStreams.toString());
   }, [numStreams]);
 
-  const toggleDirectML = useCallback((value: boolean): void => {
-    setUseDirectML(value);
+  const setBackendAndPersist = useCallback((value: InferenceBackend): void => {
+    setBackend(value);
   }, []);
 
   const updateNumStreams = useCallback((value: number): void => {
@@ -51,8 +63,8 @@ export const useSettings = (hasCudaSupport: boolean | null) => {
   }, []);
 
   return {
-    useDirectML,
-    toggleDirectML,
+    backend,
+    setBackend: setBackendAndPersist,
     numStreams,
     updateNumStreams,
   };

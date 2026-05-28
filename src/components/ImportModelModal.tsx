@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Upload, Info, Loader2, XCircle, FileUp, X, AlertTriangle } from 'lucide-react';
-import type { ModelImportProgress } from '../electron.d';
+import type { ModelImportProgress, InferenceBackend } from '../electron.d';
 import type { ImportForm } from '../hooks/useModelImport';
 
 interface ImportModelModalProps {
@@ -19,7 +19,7 @@ interface ImportModelModalProps {
   handleTemporalFramesChange: (temporalFrames: number) => void;
   importProgress: ModelImportProgress | null;
   mode: 'import' | 'build';
-  useDirectML: boolean;
+  backend: InferenceBackend;
 }
 
 export const ImportModelModal = memo<ImportModelModalProps>(({
@@ -198,14 +198,14 @@ export const ImportModelModal = memo<ImportModelModalProps>(({
                 <div className="mb-2">
                   <p className="text-sm font-medium text-white">Precision</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {importForm.useDirectML 
+                    {importForm.backend !== 'tensorrt' 
                       ? (importForm.useFp32 ? 'FP32 (inference + RGB format)' : 'FP16 (inference + RGB format)')
                       : (importForm.useFp32 ? 'FP32 (build + inference)' : importForm.useBf16 ? 'BF16 (build + inference)' : 'FP16 (build + inference, recommended)')
                     }
                   </p>
                 </div>
-                {importForm.useDirectML ? (
-                  // DirectML mode: only FP16 and FP32
+                {importForm.backend !== 'tensorrt' ? (
+                  // ONNX Runtime mode: only FP16 and FP32
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleFp32Change(false)}
@@ -308,7 +308,7 @@ export const ImportModelModal = memo<ImportModelModalProps>(({
           )}
 
           {/* TensorRT Build Command - Only show in TensorRT mode */}
-          {!importForm.useDirectML && (
+          {importForm.backend === 'tensorrt' && (
             <div className="bg-dark-surface rounded-lg p-4 border border-gray-700">
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <Info className="w-4 h-4 text-accent-cyan" />
@@ -349,15 +349,15 @@ export const ImportModelModal = memo<ImportModelModalProps>(({
             </div>
           )}
 
-          {/* DirectML FP32 Option */}
-          {importForm.useDirectML && (
+          {/* ONNX Runtime Info */}
+          {importForm.backend !== 'tensorrt' && (
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-gray-300">
-                  <p className="font-medium mb-1">DirectML Mode</p>
+                  <p className="font-medium mb-1">ONNX Runtime Mode</p>
                   <p className="text-xs text-gray-400">
-                    Model will be used directly with DirectML (no TensorRT conversion needed). The precision toggle controls both the DirectML internal precision AND the RGB format (RGBS for FP32, RGBH for FP16).
+                    Model will be used directly with ONNX Runtime (no TensorRT conversion needed). The precision toggle controls both the ONNX Runtime internal precision AND the RGB format (RGBS for FP32, RGBH for FP16).
                   </p>
                 </div>
               </div>
@@ -406,7 +406,7 @@ export const ImportModelModal = memo<ImportModelModalProps>(({
                 <ul className="list-disc list-inside space-y-1 text-xs text-gray-400">
                   <li>Use the switches above to quickly configure the model with good defaults</li>
                   <li>The command textbox is automatically updated but remains editable for custom tweaks</li>
-                  {!importForm.useDirectML && (
+                  {importForm.backend === 'tensorrt' && (
                     <>
                       <li>FP16 is recommended for optimal performance and smaller model size</li>
                       <li>Dynamic shapes support multiple resolutions but take longer to build</li>

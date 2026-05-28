@@ -1,6 +1,6 @@
 // src/hooks/useBatchConfig.ts - Batch configuration management
 
-import type { SegmentSelection } from '../electron.d';
+import type { SegmentSelection, InferenceBackend } from '../electron.d';
 import { getErrorMessage } from '../types/errors';
 import { generateOutputSuffix } from '../utils/generateOutputSuffix';
 
@@ -11,7 +11,7 @@ interface UseBatchConfigOptions {
   videoCompareArgs: string;
   selectedModel: string | null;
   filters: any[];
-  useDirectML: boolean;
+  backend: InferenceBackend;
   numStreams: number;
   segment?: SegmentSelection;
   colorimetry?: any;
@@ -23,7 +23,7 @@ interface UseBatchConfigOptions {
 }
 
 export function useBatchConfig(options: UseBatchConfigOptions) {
-  const { ffmpegArgs, processingFormat, outputFormat, videoCompareArgs, selectedModel, filters, useDirectML, numStreams, segment, colorimetry, showQueue, descriptiveNamingEnabled, onAddToQueue, onLoadVideoInfo, onLog } = options;
+  const { ffmpegArgs, processingFormat, outputFormat, videoCompareArgs, selectedModel, filters, backend, numStreams, segment, colorimetry, showQueue, descriptiveNamingEnabled, onAddToQueue, onLoadVideoInfo, onLog } = options;
 
   const handleSelectVideoWithQueue = async (): Promise<void> => {
     try {
@@ -53,7 +53,7 @@ export function useBatchConfig(options: UseBatchConfigOptions) {
         processingFormat,
         outputFormat,
         videoCompareArgs,
-        useDirectML,
+        backend,
         numStreams,
         segment: segment?.enabled ? { ...segment } : undefined,
         colorimetry,
@@ -96,7 +96,7 @@ export function useBatchConfig(options: UseBatchConfigOptions) {
       processingFormat,
       outputFormat,
       videoCompareArgs,
-      useDirectML,
+      backend,
       numStreams,
       segment: segment?.enabled ? { ...segment } : undefined,
       colorimetry,

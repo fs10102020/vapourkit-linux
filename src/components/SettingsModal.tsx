@@ -1,11 +1,13 @@
 import { memo, useState, useEffect } from 'react';
 import { Settings, Info, Terminal, FolderOpen, X, Package, FileCode, RotateCcw, Cpu, Play, ChevronDown, ChevronUp, HardDrive } from 'lucide-react';
+import type { InferenceBackend } from '../electron.d';
+import { BACKEND_LABELS } from '../types/backend';
 
 interface SettingsModalProps {
   show: boolean;
   onClose: () => void;
-  useDirectML: boolean;
-  onToggleDirectML: (value: boolean) => void;
+  backend: InferenceBackend;
+  onSetBackend: (backend: InferenceBackend) => void;
   numStreams: number;
   onUpdateNumStreams: (value: number) => void;
   videoCompareArgs: string;
@@ -23,8 +25,8 @@ type Tab = 'general' | 'processing';
 export const SettingsModal = memo<SettingsModalProps>(({ 
   show, 
   onClose, 
-  useDirectML, 
-  onToggleDirectML,
+  backend, 
+  onSetBackend,
   numStreams,
   onUpdateNumStreams,
   videoCompareArgs,
@@ -149,32 +151,44 @@ export const SettingsModal = memo<SettingsModalProps>(({
                   Inference Backend
                 </h3>
                 
-                {/* DirectML Toggle */}
+                {/* Backend Selector */}
                 <div className="bg-dark-surface rounded-lg p-4 border border-gray-700">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={useDirectML}
-                      onChange={(e) => onToggleDirectML(e.target.checked)}
-                      className="w-5 h-5 rounded border-gray-600 bg-dark-bg text-primary-blue focus:ring-2 focus:ring-primary-blue mt-0.5"
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-white">Use DirectML (ONNX Runtime)</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Enable DirectML backend for broader GPU compatibility (AMD, Intel, NVIDIA). Uses ONNX models directly without requiring TensorRT engine conversion.
-                      </p>
-                      {!useDirectML && (
-                        <p className="text-xs text-blue-400 mt-2 flex items-center gap-1">
-                          <Info className="w-3 h-3" />
-                          Currently using TensorRT (NVIDIA only, requires engine conversion)
-                        </p>
-                      )}
-                    </div>
-                  </label>
+                  <p className="text-sm font-medium text-white mb-3">Inference Backend</p>
+                  <div className="space-y-2">
+                    {(['tensorrt', 'onnxruntime-cuda', 'onnxruntime-cpu'] as InferenceBackend[]).map((be) => (
+                      <label key={be} className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="backend"
+                          checked={backend === be}
+                          onChange={() => onSetBackend(be)}
+                          className="w-4 h-4 rounded-full border-gray-600 bg-dark-bg text-primary-blue focus:ring-2 focus:ring-primary-blue mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-white">{BACKEND_LABELS[be]}</p>
+                          {be === 'tensorrt' && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              Fastest performance on NVIDIA GPUs. Requires engine conversion.
+                            </p>
+                          )}
+                          {be === 'onnxruntime-cuda' && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              ONNX Runtime with CUDA acceleration. Good NVIDIA GPU performance without engine conversion.
+                            </p>
+                          )}
+                          {be === 'onnxruntime-cpu' && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              ONNX Runtime CPU execution. Works everywhere but is significantly slower.
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
-                {/* TensorRT num_streams setting - only show when DirectML is disabled */}
-                {!useDirectML && (
+                {/* TensorRT num_streams setting - only show when backend is tensorrt */}
+                {backend === 'tensorrt' && (
                   <div className="bg-dark-surface rounded-lg p-4 border border-gray-700 mt-4">
                     <label className="block">
                       <div className="flex items-center justify-between mb-2">
@@ -207,7 +221,8 @@ export const SettingsModal = memo<SettingsModalProps>(({
                       <p className="font-medium mb-2">Backend Comparison:</p>
                       <ul className="space-y-1.5 text-[11px] text-gray-400">
                         <li><strong className="text-white">TensorRT:</strong> Fastest performance on NVIDIA GPUs, requires engine conversion</li>
-                        <li><strong className="text-white">DirectML:</strong> Works on AMD/Intel/NVIDIA GPUs, uses ONNX directly, but is much slower. Prefer TensorRT for NVIDIA GPUs.</li>
+                        <li><strong className="text-white">ONNX Runtime CUDA:</strong> Good NVIDIA GPU performance, uses ONNX directly without engine conversion</li>
+                        <li><strong className="text-white">ONNX Runtime CPU:</strong> Works on any system, significantly slower, uses ONNX directly</li>
                       </ul>
                     </div>
                   </div>

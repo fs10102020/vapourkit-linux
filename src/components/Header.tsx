@@ -1,17 +1,19 @@
 import { memo, useMemo } from 'react';
 import { Info, Settings, RefreshCw, Download, Upload, FolderOpen, X, Plug, Cpu, FileCheck2, Undo, Redo, Lock, LockOpen } from 'lucide-react';
 import { Logo } from './Logo';
+import type { InferenceBackend } from '../electron.d';
+import { BACKEND_SHORT_LABELS } from '../types/backend';
 
 interface HeaderProps {
   isProcessing: boolean;
-  useDirectML: boolean;
+  backend: InferenceBackend;
   privacyMode: boolean;
   onTogglePrivacyMode: () => void;
   onSettingsClick: () => void;
   onPluginsClick: () => void;
   onReloadBackend: () => void;
   onAboutClick: () => void;
-  onToggleDirectML: (value: boolean) => void;
+  onSetBackend: (backend: InferenceBackend) => void;
   onLoadWorkflow?: () => void;
   onImportWorkflow?: () => void;
   onExportWorkflow?: () => void;
@@ -27,14 +29,14 @@ interface HeaderProps {
 
 export const Header = memo<HeaderProps>(({
   isProcessing,
-  useDirectML,
+  backend,
   privacyMode,
   onTogglePrivacyMode,
   onSettingsClick,
   onPluginsClick,
   onReloadBackend,
   onAboutClick,
-  onToggleDirectML,
+  onSetBackend,
   onLoadWorkflow,
   onImportWorkflow,
   onExportWorkflow,
@@ -86,16 +88,12 @@ export const Header = memo<HeaderProps>(({
             <span className="text-xs">Plugins</span>
           </button>
           <button
-            onClick={() => onToggleDirectML(!useDirectML)}
+            onClick={() => onSetBackend(backend)}
             className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-dark-surface rounded-lg flex flex-col items-center gap-0.5 min-w-[70px]"
-            title={useDirectML ? "Currently using DirectML - Click to switch to TensorRT" : "Currently using TensorRT - Click to switch to DirectML"}
+            title={`Currently using ${BACKEND_SHORT_LABELS[backend]} - Click to switch backend`}
           >
             <Cpu className="w-5 h-5" />
-            <div className="flex items-center gap-1 text-xs">
-              <span className={useDirectML ? 'text-accent-cyan font-semibold' : 'text-gray-500'}>DML</span>
-              <span className="text-gray-600">|</span>
-              <span className={!useDirectML ? 'text-primary-blue font-semibold' : 'text-gray-500'}>TRT</span>
-            </div>
+            <span className="text-xs text-accent-cyan font-semibold">{BACKEND_SHORT_LABELS[backend]}</span>
           </button>
           <button
             onClick={onReloadBackend}

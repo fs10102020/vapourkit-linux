@@ -128,7 +128,7 @@ export function registerVideoHandlers(
     event,
     videoPath: string,
     modelPath: string | null,
-    useDirectML?: boolean,
+    backend?: string,
     upscalingEnabled?: boolean,
     filters?: any[],
     upscalePosition?: number,
@@ -143,12 +143,12 @@ export function registerVideoHandlers(
         infoExecutor = null;
       }
       
-      const config = createScriptConfig(
-        videoPath,
-        modelPath,
-        dependencyManager,
-        useDirectML,
-        upscalingEnabled,
+        const config = createScriptConfig(
+          videoPath,
+          modelPath,
+          dependencyManager,
+          backend,
+          upscalingEnabled,
         filters,
         numStreams,
         undefined, // segment
@@ -222,7 +222,7 @@ export function registerVideoHandlers(
     videoPath: string,
     modelPath: string | null,
     outputPath: string,
-    useDirectML?: boolean,
+    backend?: string,
     upscalingEnabled?: boolean,
     filters?: any[],
     upscalePosition?: number,
@@ -279,7 +279,7 @@ export function registerVideoHandlers(
       qlog(`Upscaling: ${isUpscaling ? 'enabled' : 'disabled'}`);
       if (isUpscaling && modelPath) {
         qlog(`Model: ${modelPath}`);
-        qlog(`Backend: ${useDirectML ? 'DirectML (ONNX Runtime)' : 'TensorRT'}`);
+        qlog(`Backend: ${backend || 'tensorrt'}`);
       }
       qlog(`Output: ${benchmarkMode ? '(benchmark - null output)' : outputPath}`);
       if (benchmarkMode) qlog('BENCHMARK MODE: Output will be discarded');
@@ -307,7 +307,7 @@ export function registerVideoHandlers(
           videoPath,
           modelPath,
           dependencyManager,
-          useDirectML,
+          backend,
           upscalingEnabled,
           filters,
           numStreams,
@@ -471,7 +471,7 @@ export function registerVideoHandlers(
     event,
     videoPath: string,
     modelPath: string | null,
-    useDirectML?: boolean,
+    backend?: string,
     upscalingEnabled?: boolean,
     filters?: any[],
     numStreams?: number,
@@ -486,7 +486,7 @@ export function registerVideoHandlers(
         inputVideo: videoPath,
         enginePath: PATHS.MLRT_PLUGIN,
         pluginsPath: PATHS.PLUGINS,
-        useDirectML: useDirectML || false,
+        backend: backend || 'tensorrt',
         useFp32: modelPath ? configManager.isModelFp32(modelPath) : false,
         modelType: modelPath ? configManager.getModelType(modelPath) : 'image' as const,
         upscalingEnabled: upscalingEnabled || false,
@@ -524,7 +524,7 @@ export function registerVideoHandlers(
     event,
     videoPath: string,
     modelPath: string | null,
-    useDirectML?: boolean,
+    backend?: string,
     upscalingEnabled?: boolean,
     filters?: any[],
     numStreams?: number,
@@ -564,7 +564,7 @@ export function registerVideoHandlers(
           videoPath,
           modelPath,
           dependencyManager,
-          useDirectML,
+          backend,
           upscalingEnabled,
           filters,
           numStreams,
@@ -818,7 +818,7 @@ function createScriptConfig(
   videoPath: string,
   modelPath: string | null,
   dependencyManager: DependencyManager,
-  useDirectML?: boolean,
+  backend?: string,
   upscalingEnabled?: boolean,
   filters?: any[],
   numStreams?: number,
@@ -844,12 +844,12 @@ function createScriptConfig(
     inputVideo: videoPath,
     enginePath: modelPath || '',
     pluginsPath: dependencyManager.getPluginsPath(),
-    useDirectML: useDirectML || false,
+    backend: backend || 'tensorrt',
     useFp32: useFp32,
     modelType: modelType,
     upscalingEnabled: isUpscaling,
     colorimetry: colorimetrySettings,
-    filters: filters,
+    filters: filters || [],
     numStreams: numStreams,
     outputFormat: outputFormat,
     segment: segment?.enabled ? segment : undefined,

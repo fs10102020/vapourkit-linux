@@ -1,10 +1,10 @@
 import { memo } from 'react';
 import { AlertCircle, Sparkles } from 'lucide-react';
-import type { ModelFile, UninitializedModel, Filter } from '../electron.d';
+import type { ModelFile, UninitializedModel, Filter, InferenceBackend } from '../electron.d';
 import { shouldShowBuildNotification, getEnabledAIModelPaths } from '../utils/modelUtils';
 
 interface ModelBuildNotificationProps {
-  useDirectML: boolean;
+  backend: InferenceBackend;
   availableModels: ModelFile[];
   uninitializedModels: UninitializedModel[];
   filters: Filter[];
@@ -12,7 +12,7 @@ interface ModelBuildNotificationProps {
 }
 
 export const ModelBuildNotification = memo<ModelBuildNotificationProps>(({
-  useDirectML,
+  backend,
   availableModels,
   uninitializedModels,
   filters,
@@ -28,7 +28,7 @@ export const ModelBuildNotification = memo<ModelBuildNotificationProps>(({
   let unbuiltModelPath: string | null = null;
   for (const modelPath of modelsInUse) {
     const modelObj = availableModels.find(m => m.path === modelPath);
-    if (shouldShowBuildNotification(modelObj ?? null, useDirectML)) {
+    if (shouldShowBuildNotification(modelObj ?? null, backend)) {
       unbuiltModelPath = modelPath;
       break;
     }

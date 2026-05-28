@@ -263,7 +263,7 @@ export function registerModelHandlers(mainWindow: BrowserWindow | null) {
     useBf16?: boolean;
     modelType?: string;
     temporalFrames?: number;
-    useDirectML?: boolean;
+    backend?: string;
     displayTag?: string;
     useStaticShape?: boolean;
     useCustomTrtexecParams?: boolean;
@@ -276,7 +276,7 @@ export function registerModelHandlers(mainWindow: BrowserWindow | null) {
       logger.model(`Model name: ${params.modelName}`);
       logger.model(`Precision: ${params.useFp32 ? 'FP32' : params.useBf16 ? 'BF16' : 'FP16'}`);
       logger.model(`Model type: ${params.modelType || 'image'}`);
-      logger.model(`DirectML mode: ${params.useDirectML ? 'enabled' : 'disabled'}`);
+      logger.model(`Backend: ${params.backend || 'tensorrt'}`);
       logger.model(`Skip validation: ${params.skipValidation ? 'yes' : 'no'}`);
       
       try {
@@ -338,10 +338,10 @@ export function registerModelHandlers(mainWindow: BrowserWindow | null) {
           params.modelType === 'vsr' ? params.temporalFrames : undefined
         );
 
-        // If DirectML mode is enabled, skip TensorRT conversion
-        if (params.useDirectML) {
-          logger.model('DirectML mode enabled - skipping TensorRT conversion');
-          sendModelImportProgress(mainWindow, 'complete', 100, 'Model imported successfully for DirectML use!', targetOnnxPath);
+        // If backend doesn't require TensorRT engines, skip conversion
+        if (params.backend && params.backend !== 'tensorrt') {
+          logger.model(`Backend is ${params.backend} - skipping TensorRT conversion`);
+          sendModelImportProgress(mainWindow, 'complete', 100, 'Model imported successfully!', targetOnnxPath);
           activeModelExtractor = null;
           
           return {

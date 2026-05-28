@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { SetupProgress } from '../electron.d';
+import type { SetupProgress, BackendCapabilities } from '../electron.d';
 import { getErrorMessage } from '../types/errors';
 
 export function useSetup(onLog: (message: string) => void) {
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [isCheckingDeps, setIsCheckingDeps] = useState(true);
-  const [hasCudaSupport, setHasCudaSupport] = useState<boolean | null>(null);
+  const [backendCapabilities, setBackendCapabilities] = useState<BackendCapabilities | null>(null);
   const [setupProgress, setSetupProgress] = useState<SetupProgress | null>(null);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [pluginInstallError, setPluginInstallError] = useState<string | null>(null);
@@ -38,9 +38,9 @@ export function useSetup(onLog: (message: string) => void) {
   const checkDependencies = useCallback(async (): Promise<void> => {
     setIsCheckingDeps(true);
     try {
-      const cudaSupport = await window.electronAPI.detectCudaSupport();
-      setHasCudaSupport(cudaSupport);
-      onLog(`CUDA support: ${cudaSupport ? 'detected' : 'not detected'}`);
+      const capabilities = await window.electronAPI.getBackendCapabilities();
+      setBackendCapabilities(capabilities);
+      onLog(`Backend capabilities: ${capabilities.supportedBackends.join(', ')}, recommended: ${capabilities.recommendedBackend}`);
 
       const isComplete = await window.electronAPI.checkDependencies();
       setIsSetupComplete(isComplete);
@@ -90,7 +90,7 @@ export function useSetup(onLog: (message: string) => void) {
   return {
     isSetupComplete,
     isCheckingDeps,
-    hasCudaSupport,
+    backendCapabilities,
     setupProgress,
     isSettingUp,
     handleSetup,
