@@ -44,7 +44,7 @@
         "autoprefixer": "^10.4.20",
         "concurrently": "^9.0.1",
         "cross-env": "^10.1.0",
-        "electron": "^32.0.1",
+        "electron": "^32.3.3",
         "electron-builder": "^26.0.12",
         "postcss": "^8.4.45",
         "tailwindcss": "^3.4.10",
@@ -129,15 +129,21 @@
             "target": [
                 {
                     "target": "AppImage",
-                    "arch": ["x64"]
+                    "arch": [
+                        "x64"
+                    ]
                 },
                 {
                     "target": "deb",
-                    "arch": ["x64"]
+                    "arch": [
+                        "x64"
+                    ]
                 },
                 {
                     "target": "rpm",
-                    "arch": ["x64"]
+                    "arch": [
+                        "x64"
+                    ]
                 }
             ],
             "icon": "build/icon.png",

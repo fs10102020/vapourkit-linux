@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
+import * as os from 'os';
 import { logger } from './logger';
 import { PATHS } from './constants';
 import { isLinux, isWindows, platformSpawnOptions } from './platform';
@@ -33,6 +34,13 @@ export async function probeVapourSynthPlugin(
     '',
   ].join('\n');
 
+  // Write script to temp file so we don't depend on stdin support
+  const fs = require('fs');
+  const tmpDir = path.join(os.tmpdir(), 'vapourkit-probes');
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const tmpFile = path.join(tmpDir, `probe-${namespace}-${Date.now()}.vpy`);
+  fs.writeFileSync(tmpFile, script);
+
   return new Promise((resolve) => {
     let settled = false;
     let timeout: NodeJS.Timeout;
@@ -40,6 +48,7 @@ export async function probeVapourSynthPlugin(
       if (settled) return;
       settled = true;
       if (timeout) clearTimeout(timeout);
+      try { fs.unlinkSync(tmpFile); } catch {}
       resolve(result);
     };
 
@@ -66,7 +75,6 @@ export async function probeVapourSynthPlugin(
       ];
       const sitePackages = sitePackagesCandidates.find(sp => {
         try {
-          const fs = require('fs');
           return fs.existsSync(sp);
         } catch {
           return false;
@@ -82,8 +90,8 @@ export async function probeVapourSynthPlugin(
       }
     }
 
-    const proc = spawn(vspipe, ['-i', '-', '-'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
+    const proc = spawn(vspipe, [tmpFile, '-'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
       env,
       ...platformSpawnOptions(),
     });
@@ -109,14 +117,6 @@ export async function probeVapourSynthPlugin(
     proc.on('error', (err) => {
       finish({ pluginLoadable: false, error: err.message });
     });
-
-    // Write the script to stdin and close it
-    try {
-      proc.stdin?.write(script);
-      proc.stdin?.end();
-    } catch {
-      // ignore
-    }
 
     timeout = setTimeout(() => {
       try {

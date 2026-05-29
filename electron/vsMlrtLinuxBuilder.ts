@@ -238,6 +238,7 @@ export class VsMlrtLinuxBuilder {
         '-G', 'Ninja',
         '-DCMAKE_BUILD_TYPE=Release',
         '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
+        '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
         `-DProtobuf_PROTOC_EXECUTABLE=${protoc}`,
         `-DProtobuf_LITE_LIBRARY=${protobufLib}`,
         `-DProtobuf_LIBRARIES=${protobufLib}`,
