@@ -30,24 +30,25 @@ export const SetupScreen = memo<SetupScreenProps>(({
   // Note: component names must use startsWith matching because backend sends versioned names
   // e.g., backend sends 'vs-mlrt TensorRT v15.13' but we match against 'vs-mlrt TensorRT'
   const setupSteps = useMemo(() => {
+    const isLinuxPlatform = backendCapabilities?.platform === 'linux';
     const steps = [
-      { id: 'vapoursynth', name: 'VapourSynth Portable R72', description: 'Video processing framework', component: 'VapourSynth R72' },
+      { id: 'vapoursynth', name: isLinuxPlatform ? 'VapourSynth' : 'VapourSynth Portable R72', description: 'Video processing framework', component: 'VapourSynth R72' },
       { id: 'bestsource', name: 'BestSource R13', description: 'Video source filter', component: 'BestSource R13' },
       { id: 'video-compare', name: 'Video Compare Tool', description: 'Side-by-side comparison viewer', component: 'Video Compare Tool' },
-      { id: 'onnx', name: 'vs-mlrt ONNX Runtime Plugin v15.13', description: 'ONNX Runtime support (CPU/CUDA acceleration)', component: 'vs-mlrt ONNX Runtime' },
+      { id: 'onnx', name: isLinuxPlatform ? 'vs-mlrt ONNX Runtime Plugin' : 'vs-mlrt ONNX Runtime Plugin v15.13', description: 'ONNX Runtime support (CPU/CUDA acceleration)', component: 'vs-mlrt ONNX Runtime' },
     ];
 
     if (backendCapabilities?.tensorrtAvailable) {
       steps.splice(4, 0, {
         id: 'tensorrt',
-        name: 'vs-mlrt TensorRT Plugin v15.13',
+        name: isLinuxPlatform ? 'vs-mlrt TensorRT Plugin' : 'vs-mlrt TensorRT Plugin v15.13',
         description: 'AI inference engine (NVIDIA GPUs)',
         component: 'vs-mlrt TensorRT'
       });
     }
 
     steps.push(
-      { id: 'python', name: 'Python Embedded', description: 'Python runtime for VapourSynth', component: 'Python Embedded' },
+      { id: 'python', name: isLinuxPlatform ? 'Python' : 'Python Embedded', description: 'Python runtime for VapourSynth', component: 'Python Embedded' },
       { id: 'models', name: 'ONNX Models', description: 'Bundled AI upscaling models', component: 'ONNX Models' },
       { id: 'ffmpeg', name: 'FFmpeg', description: 'Video encoding/decoding', component: 'FFmpeg' },
       { id: 'plugins', name: 'Plugins & Filters', description: 'PyTorch, vsjetpack, and bundled VapourSynth plugins', component: 'Plugins' }

@@ -12,7 +12,7 @@ import { VideoMetadataExtractor, VideoMetadata } from './videoMetadataExtractor'
 import { VapourSynthInfoExtractor, OutputInfo } from './vapourSynthInfoExtractor';
 import { FFmpegSettingsManager, FFmpegConfig } from './ffmpegSettingsManager';
 import { configManager } from './configManager';
-import { forceKillProcess } from './platform';
+import { forceKillProcess, executableExists, isLinux } from './platform';
 
 export interface SegmentSelection {
   enabled: boolean;
@@ -225,14 +225,14 @@ export class UpscaleExecutor {
 
   private async validateExecutables() {
     // Check if vspipe exists
-    if (!await fs.pathExists(this.vspipePath)) {
+    if (!executableExists(this.vspipePath)) {
       const error = `vspipe not found at: ${this.vspipePath}`;
       logger.errorWithDialog('Upscale Error', error);
       throw new Error(error);
     }
 
     // Check if embedded Python exists
-    if (!await fs.pathExists(this.pythonPath)) {
+    if (!executableExists(this.pythonPath)) {
       const error = `Embedded Python not found at: ${this.pythonPath}`;
       logger.errorWithDialog('Upscale Error', error);
       throw new Error(error);
@@ -240,7 +240,7 @@ export class UpscaleExecutor {
     
     // Check if ffmpeg exists
     const ffmpegPath = FFmpegManager.getFFmpegPath();
-    if (!ffmpegPath || !await fs.pathExists(ffmpegPath)) {
+    if (!ffmpegPath || !executableExists(ffmpegPath)) {
       const error = `ffmpeg not found at: ${ffmpegPath || 'unknown'}`;
       logger.errorWithDialog('Upscale Error', error);
       throw new Error(error);
@@ -254,7 +254,8 @@ export class UpscaleExecutor {
     return spawn(this.vspipePath, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: env,
-      cwd: this.vsPath
+      cwd: this.vsPath,
+      detached: isLinux,
     });
   }
 
@@ -396,7 +397,8 @@ export class UpscaleExecutor {
     // Single FFmpeg process for both encoding and preview
     logger.upscale('Spawning single ffmpeg process for encoding and preview');
     return spawn(ffmpegPath, ffmpegArgs, {
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: isLinux,
     });
   }
 

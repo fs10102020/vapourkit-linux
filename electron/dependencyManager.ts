@@ -9,7 +9,7 @@ import { runCommand, getBundledBasePath } from './utils';
 import { FFmpegManager } from './ffmpegManager';
 import { configManager } from './configManager';
 import { VsMlrtManager } from './vsMlrtManager';
-import { libName, isLinux } from './platform';
+import { libName, isLinux, executableExists } from './platform';
 import * as _7z from '7zip-min';
 
 export interface DownloadProgress {
@@ -212,35 +212,33 @@ export class DependencyManager {
 
   async checkDependencies(): Promise<boolean> {
     logger.dependency('Checking dependencies');
-    
-    // Import CUDA detection
-    const { detectCudaSupport } = await import('./utils');
-    const hasCuda = await detectCudaSupport();
-    
-    const vsExists = await fs.pathExists(PATHS.VSPIPE);
-    const mlrtExists = hasCuda ? await fs.pathExists(PATHS.TRTEXEC) : true;
-    const ortExists = await fs.pathExists(path.join(PATHS.PLUGINS, libName('vsort')));
-    const bsExists = await fs.pathExists(path.join(PATHS.PLUGINS, libName('bestsource')));
-    const pythonExists = await fs.pathExists(PATHS.PYTHON);
-    const videoCompareExists = await fs.pathExists(PATHS.VIDEO_COMPARE_EXE);
+
+    const { getRuntimeCapabilities } = await import('./backendUtils');
+    const caps = await getRuntimeCapabilities();
+
+    const vsExists = executableExists(PATHS.VSPIPE);
+    const pythonExists = executableExists(PATHS.PYTHON);
+    const videoCompareExists = executableExists(PATHS.VIDEO_COMPARE_EXE);
     const ffmpegExists = await FFmpegManager.isInstalled();
-    // NOTE: No longer checking if models are converted - they will be initialized on-demand
-    
-    logger.dependency(`CUDA support: ${hasCuda}`);
-    logger.dependency(`VapourSynth: ${vsExists}`);
-    logger.dependency(`MLRT Plugin: ${mlrtExists} ${hasCuda ? '' : '(skipped - no CUDA)'}`);
-    logger.dependency(`ONNX Runtime Plugin: ${ortExists}`);
-    logger.dependency(`BestSource: ${bsExists}`);
+
+    logger.dependency(`CUDA support: ${caps.cudaAvailable}`);
+    logger.dependency(`VapourSynth vspipe: ${vsExists}`);
+    logger.dependency(`ONNX Runtime (core.ort): ${caps.onnxRuntimeAvailable}`);
+    logger.dependency(`TensorRT runtime (core.trt): ${caps.tensorrtRuntimeAvailable}`);
+    logger.dependency(`TensorRT builder (trtexec): ${caps.tensorrtBuilderAvailable}`);
+    logger.dependency(`BestSource (core.bs): ${caps.bestSourceAvailable}`);
     logger.dependency(`Python: ${pythonExists}`);
     logger.dependency(`Video Compare: ${videoCompareExists}`);
     logger.dependency(`FFmpeg: ${ffmpegExists}`);
 
-    const coreDepsPresent = vsExists && mlrtExists && ortExists && bsExists && pythonExists && videoCompareExists && ffmpegExists;
+    // Hard requirements: vspipe, Python, FFmpeg, BestSource, ONNX Runtime plugin
+    // TensorRT is optional without CUDA; with CUDA it is required for tensorrt backend but not for the app to start.
+    const hardRequirementsMet = vsExists && pythonExists && ffmpegExists && caps.bestSourceAvailable && caps.onnxRuntimeAvailable;
 
     // If core deps are healthy, silently extract any missing bundled ONNX models rather than
     // failing the health check and forcing the user through the full setup flow.
     // Model extraction is just a fast local file copy (ASAR → data/models), never a download.
-    if (coreDepsPresent && await this.modelExtractor.needsExtraction()) {
+    if (hardRequirementsMet && await this.modelExtractor.needsExtraction()) {
       logger.dependency('Core deps present but some bundled ONNX models are missing — extracting silently');
       try {
         await this.modelExtractor.extractModels();
@@ -252,7 +250,7 @@ export class DependencyManager {
     }
 
     // Detect app version change (upgrade-in-place) and update bundled files
-    if (coreDepsPresent) {
+    if (hardRequirementsMet) {
       const currentVersion = app.getVersion();
       const storedVersion = configManager.getAppVersion();
       if (storedVersion !== currentVersion) {
@@ -268,10 +266,8 @@ export class DependencyManager {
       }
     }
 
-    const allPresent = coreDepsPresent;
-    logger.dependency(`All dependencies present: ${allPresent}`);
-    
-    return allPresent;
+    logger.dependency(`All dependencies present: ${hardRequirementsMet}`);
+    return hardRequirementsMet;
   }
   
   async downloadFile(url: string, outputPath: string, componentName: string): Promise<void> {
@@ -435,12 +431,17 @@ export class DependencyManager {
       logger.dependency(`=== CUDA DETECTION RESULT: ${hasCuda} ===`);
 
       if (isLinux) {
-        // Linux: use native dependency resolver
+        // Linux: use native dependency resolver with hard requirements
         const { DependencyResolver } = await import('./dependencyResolver');
+        const { getRuntimeCapabilities } = await import('./backendUtils');
 
         this.sendProgress({ type: 'download', component: 'Platform Setup', progress: 0, message: 'Setting up Linux environment...' });
 
-        await DependencyResolver.resolvePython();
+        const pythonStatus = await DependencyResolver.resolvePython();
+        if (!pythonStatus.installed) {
+          this.sendProgress({ type: 'error', component: 'Python', progress: 0, message: pythonStatus.guide || 'Python 3 is required' });
+          throw new Error(pythonStatus.guide || 'Python 3 is required but not found');
+        }
         this.sendProgress({ type: 'download', component: 'Python', progress: 20, message: 'Python detected' });
 
         const venvResult = await DependencyResolver.setupVenv();
@@ -453,31 +454,69 @@ export class DependencyManager {
         const pipResults = await DependencyResolver.installPipPackages();
         const pipFailed = pipResults.filter(r => !r.installed);
         if (pipFailed.length > 0) {
-          logger.warn('Some pip packages failed to install:', pipFailed.map(r => r.name).join(', '));
+          const failedNames = pipFailed.map(r => r.name).join(', ');
+          this.sendProgress({ type: 'error', component: 'Python Packages', progress: 0, message: `Failed to install: ${failedNames}` });
+          throw new Error(`Required Python packages failed to install: ${failedNames}`);
         }
         this.sendProgress({ type: 'download', component: 'Python Packages', progress: 70, message: 'Python packages installed' });
 
         const ffmpegResults = await DependencyResolver.resolveFFmpeg();
         const ffmpegFailed = ffmpegResults.filter(r => !r.installed);
         if (ffmpegFailed.length > 0) {
-          logger.warn('FFmpeg not found on PATH:', ffmpegFailed.map(r => r.name).join(', '));
+          const guides = ffmpegFailed.map(r => r.guide || r.name).join('; ');
+          this.sendProgress({ type: 'error', component: 'FFmpeg', progress: 0, message: guides });
+          throw new Error(`FFmpeg is required but not found. ${guides}`);
         }
         this.sendProgress({ type: 'download', component: 'FFmpeg', progress: 80, message: 'FFmpeg detected' });
 
         const vsResult = await DependencyResolver.resolveVapourSynth();
         if (!vsResult.installed) {
-          logger.warn('VapourSynth not found:', vsResult.guide);
-          this.sendProgress({ type: 'download', component: 'VapourSynth', progress: 85, message: 'VapourSynth detection warning' });
+          this.sendProgress({ type: 'error', component: 'VapourSynth', progress: 0, message: vsResult.guide || 'VapourSynth is required' });
+          throw new Error(vsResult.guide || 'VapourSynth is required but not found');
         }
+        this.sendProgress({ type: 'download', component: 'VapourSynth', progress: 85, message: 'VapourSynth detected' });
 
         const vcResult = await DependencyResolver.resolveVideoCompare();
         if (!vcResult.installed) {
-          logger.warn('video-compare not found:', vcResult.guide);
+          logger.warn('video-compare not found (optional):', vcResult.guide);
         }
 
-        // Skip Windows downloads, go straight to models and config
+        // NOTE: vs-mlrt upstream does not provide Linux pre-built binaries.
+        // On Linux we can only check whether the plugins are already present
+        // (system, user home, Flatpak, or distro package). If they are missing,
+        // the post-setup runtime probe will fail with a clear message.
+        const ortInstalled = await VsMlrtManager.isComponentInstalled('onnx-runtime');
+        if (!ortInstalled) {
+          logger.warn('vs-mlrt ONNX Runtime plugin (vsort) not found on Linux. Install it through your distribution or build from source: https://github.com/AmusementClub/vs-mlrt');
+        } else {
+          logger.dependency('vs-mlrt ONNX Runtime plugin detected');
+        }
+
+        if (hasCuda) {
+          const trtInstalled = await VsMlrtManager.isComponentInstalled('tensorrt');
+          if (!trtInstalled) {
+            logger.warn('vs-mlrt TensorRT plugin (vstrt) not found on Linux. Install it through your distribution or build from source if you need TensorRT inference.');
+          } else {
+            logger.dependency('vs-mlrt TensorRT plugin detected');
+          }
+        }
+
+        // Validate that hard requirements are actually satisfied after setup
+        const postCaps = await getRuntimeCapabilities();
+        if (!postCaps.bestSourceAvailable) {
+          throw new Error('BestSource plugin is not loadable after setup. Ensure VapourSynth plugin paths are correct.');
+        }
+        if (!postCaps.onnxRuntimeAvailable) {
+          throw new Error('ONNX Runtime plugin (vsort) is not loadable after setup. Ensure it was extracted to the correct plugin directory.');
+        }
+
+        // Only report Linux setup complete after all hard requirements pass
+        const allHardDeps = await this.checkDependencies();
+        if (!allHardDeps) {
+          throw new Error('Linux setup finished but core dependency check failed. See logs for details.');
+        }
         this.sendProgress({ type: 'download', component: 'Platform Setup', progress: 90, message: 'Linux setup complete' });
-        logger.dependency(`Will ${hasCuda ? 'CHECK FOR' : 'SKIP'} TensorRT plugin`);
+        logger.dependency(`TensorRT plugin ${hasCuda ? 'installed/checked' : 'skipped (no CUDA)'}`);
       } else {
         // Windows: existing download-based setup
         logger.dependency(`Will ${hasCuda ? 'DOWNLOAD' : 'SKIP'} TensorRT plugin`);

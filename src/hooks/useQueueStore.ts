@@ -46,7 +46,37 @@ export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQue
   // Load queue from persistent storage
   const loadQueue = useCallback(async () => {
     try {
-      const savedQueue = await window.electronAPI.getQueue();
+      let savedQueue = await window.electronAPI.getQueue();
+
+      // Migrate old queue items: ensure backend/numStreams exist and normalize unsupported backends
+      const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform);
+      const platformDefaultBackend: import('../electron.d').InferenceBackend = isWindows ? 'directml' : 'onnxruntime-cpu';
+
+      let migratedCount = 0;
+      savedQueue = savedQueue.map((item: QueueItem) => {
+        let changed = false;
+        const workflow = { ...item.workflow };
+
+        if (!workflow.backend) {
+          workflow.backend = platformDefaultBackend;
+          changed = true;
+        }
+        if (workflow.backend === 'directml' && !isWindows) {
+          workflow.backend = 'onnxruntime-cpu';
+          changed = true;
+        }
+        if (typeof workflow.numStreams !== 'number' || isNaN(workflow.numStreams)) {
+          workflow.numStreams = 2;
+          changed = true;
+        }
+
+        if (changed) migratedCount++;
+        return { ...item, workflow };
+      });
+
+      if (migratedCount > 0) {
+        onLog(`Migrated ${migratedCount} queue item(s) with missing/invalid backend or numStreams`);
+      }
 
       // Reset any items that were processing when app was closed
       const resetQueue = savedQueue.map((item: QueueItem) => {

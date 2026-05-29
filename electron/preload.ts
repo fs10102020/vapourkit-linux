@@ -185,6 +185,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('plugin-dependency-progress', listener);
     return () => ipcRenderer.removeListener('plugin-dependency-progress', listener);
   },
+
+  // Detailed dependency status (read-only diagnostics)
+  checkDependencyStatus: () => ipcRenderer.invoke('check-dependency-status'),
   
   // Update operations
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

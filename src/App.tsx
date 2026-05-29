@@ -65,7 +65,7 @@ function App() {
   // Setup and initialization hooks
   const { consoleOutput, consoleEndRef, addConsoleLog } = useConsoleLog();
   const { isSetupComplete, isCheckingDeps, backendCapabilities, setupProgress, isSettingUp, handleSetup, pluginInstallError, handleRetryPlugins, handleContinueWithoutPlugins } = useSetup(addConsoleLog);
-  const { backend, setBackend, numStreams, updateNumStreams } = useSettings(backendCapabilities?.cudaAvailable ?? null, true);
+  const { backend, setBackend, numStreams, updateNumStreams } = useSettings(backendCapabilities);
   const { privacyMode, togglePrivacyMode } = usePrivacyMode();
   const { 
     ffmpegArgs, 
@@ -681,7 +681,6 @@ function App() {
         onPluginsClick={() => setShowPlugins(true)}
         onReloadBackend={handleReloadBackend}
         onAboutClick={() => setShowAbout(true)}
-        onSetBackend={handleSetBackend}
         onLoadWorkflow={handleLoadWorkflow}
         onImportWorkflow={handleImportWorkflow}
         onExportWorkflow={handleExportWorkflow}
@@ -941,6 +940,7 @@ function App() {
         onResetDefaultOutputFolder={handleResetDefaultOutputFolder}
         descriptiveNamingEnabled={descriptiveNamingEnabled}
         onUpdateDescriptiveNamingEnabled={handleUpdateDescriptiveNamingEnabled}
+        backendCapabilities={backendCapabilities}
         showAbout={showAbout}
         onCloseAbout={() => closeModalWithFocusRestore(() => setShowAbout(false))}
         showPlugins={showPlugins}

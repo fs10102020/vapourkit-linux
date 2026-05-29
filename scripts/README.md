@@ -17,3 +17,18 @@ npm run update-docs
 - Before committing changes that affect included models
 
 This ensures the documentation stays in sync with the actual model data used by the application.
+
+## Flatpak npm sources
+
+`generated-sources.json` is generated from `package-lock.json` for offline Flatpak builds.
+
+**Usage:**
+```bash
+flatpak-node-generator npm package-lock.json -o generated-sources.json
+```
+
+**When to run:**
+- After changing `package-lock.json`
+- Before submitting or testing Flatpak builds
+
+The Flatpak manifest consumes this file alongside the project source so npm packages can be fetched reproducibly by Flatpak Builder.

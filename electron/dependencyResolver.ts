@@ -221,6 +221,32 @@ export class DependencyResolver {
     return results;
   }
 
+  /** Read-only status check: detects tools but does NOT create venvs or install packages. */
+  static async resolveAllReadOnly(): Promise<DependencyStatus[]> {
+    const results: DependencyStatus[] = [];
+
+    results.push(await DependencyResolver.resolvePython());
+
+    if (isLinux) {
+      const venvPython = PATHS.VENV_PYTHON;
+      const venvExists = await fs.pathExists(venvPython);
+      results.push({
+        component: 'python-venv',
+        name: 'Python venv',
+        installed: venvExists,
+        path: venvExists ? venvPython : undefined,
+      });
+    }
+
+    const ffmpegResults = await DependencyResolver.resolveFFmpeg();
+    results.push(...ffmpegResults);
+
+    results.push(await DependencyResolver.resolveVapourSynth());
+    results.push(await DependencyResolver.resolveVideoCompare());
+
+    return results;
+  }
+
   private static async runCommand(command: string, args: string[]): Promise<{ success: boolean; error?: string }> {
     return new Promise((resolve) => {
       const proc = spawn(command, args, {

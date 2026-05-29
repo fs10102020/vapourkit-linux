@@ -5,7 +5,8 @@ import axios from 'axios';
 import { BrowserWindow } from 'electron';
 import { PATHS, VS_MLRT_VERSION } from './constants';
 import { logger } from './logger';
-import { libName, exeName, isWindows } from './platform';
+import { libName, exeName, isWindows, isLinux } from './platform';
+import { findLinuxPlugin } from './linuxRuntime';
 import * as _7z from '7zip-min';
 
 export type VsMlrtComponent = 'onnx-runtime' | 'tensorrt';
@@ -19,17 +20,33 @@ export type VsMlrtProgressCallback = (progress: VsMlrtDownloadProgress) => void;
 
 export class VsMlrtManager {
   /**
-   * Get the download URL for a specific vs-mlrt component
+   * Returns true if this platform has upstream pre-built binaries available.
+   * vs-mlrt currently only publishes Windows binaries; Linux users must build
+   * from source or install through their distribution.
+   */
+  static hasUpstreamBinaries(): boolean {
+    return isWindows;
+  }
+
+  /**
+   * Get the download URL for a specific vs-mlrt component.
+   * Throws on Linux because upstream does not provide Linux binaries.
    */
   static getComponentUrl(component: VsMlrtComponent): string {
+    if (isLinux) {
+      throw new Error(
+        `vs-mlrt does not provide pre-built Linux binaries for "${component}". ` +
+        `Install the plugin through your distribution or build it from source: ` +
+        `https://github.com/AmusementClub/vs-mlrt`
+      );
+    }
     const baseUrl = `https://github.com/AmusementClub/vs-mlrt/releases/download/v${VS_MLRT_VERSION}`;
-    const platformTag = isWindows ? 'Windows' : 'Linux';
-    
+
     switch (component) {
       case 'onnx-runtime':
-        return `${baseUrl}/VSORT-${platformTag}-x64.v${VS_MLRT_VERSION}.7z`;
+        return `${baseUrl}/VSORT-Windows-x64.v${VS_MLRT_VERSION}.7z`;
       case 'tensorrt':
-        return `${baseUrl}/vsmlrt-${platformTag.toLowerCase()}-x64-tensorrt.v${VS_MLRT_VERSION}.7z`;
+        return `${baseUrl}/vsmlrt-windows-x64-tensorrt.v${VS_MLRT_VERSION}.7z`;
     }
   }
 
@@ -70,9 +87,14 @@ export class VsMlrtManager {
   }
 
   /**
-   * Check if a component is installed
+   * Check if a component is installed.
+   * On Linux, searches the full plugin path list (system, user, Flatpak).
    */
   static async isComponentInstalled(component: VsMlrtComponent): Promise<boolean> {
+    if (isLinux) {
+      const pluginName = component === 'onnx-runtime' ? 'vsort' : 'vstrt';
+      return findLinuxPlugin(pluginName);
+    }
     return await fs.pathExists(VsMlrtManager.getCheckPath(component));
   }
 

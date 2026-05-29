@@ -1,8 +1,9 @@
 import * as path from 'path';
 import * as os from 'os';
 import { app } from 'electron';
-import { exec, ChildProcess } from 'child_process';
+import { exec, execSync, ChildProcess } from 'child_process';
 import { SpawnOptions } from 'child_process';
+import * as fs from 'fs';
 
 export const isWindows = process.platform === 'win32';
 export const isLinux = process.platform === 'linux';
@@ -50,9 +51,14 @@ export function forceKillProcess(proc: ChildProcess): void {
     });
   } else {
     try {
-      proc.kill('SIGKILL');
-    } catch (e) {
-      // process may already be dead
+      // Try to kill the whole process group (works when spawned detached)
+      process.kill(-proc.pid, 'SIGKILL');
+    } catch {
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        // process may already be dead
+      }
     }
   }
 }
@@ -76,15 +82,22 @@ export function forceKillProcessGroup(proc: ChildProcess): void {
 }
 
 export function resolveAppDataPath(): string {
+  if (isLinux) {
+    if (process.env['FLATPAK_ID'] || process.env['APPIMAGE']) {
+      return app.getPath('userData');
+    }
+    if (!app.isPackaged) {
+      return path.join(app.getAppPath(), 'data');
+    }
+    return app.getPath('userData');
+  }
   if (!app.isPackaged) {
     return path.join(app.getAppPath(), 'data');
   }
-
   if (isWindows) {
     return path.join(path.dirname(app.getPath('exe')), 'data');
   }
-
-  return path.join(app.getPath('userData'));
+  return app.getPath('userData');
 }
 
 export function resolvePythonPath(vsPath: string): string {
@@ -104,4 +117,37 @@ export function resolveVsviewPath(scriptsBase: string): string {
 
 export function resolvePluginPath(pluginsDir: string, pluginName: string): string {
   return path.join(pluginsDir, libName(pluginName));
+}
+
+/**
+ * Synchronous PATH-based binary name for spawn() on Linux.
+ * On Windows, falls back to the given fullPath. On Linux, if the
+ * fullPath doesn't exist on disk, returns the bare binary name so
+ * spawn() locates it via $PATH. Existence checks should use
+ * `executableExists` instead of raw fs.existsSync for bare names.
+ */
+
+export function executablePath(fullPath: string, binaryName: string): string {
+  if (isLinux && !fs.existsSync(fullPath)) {
+    return binaryName;
+  }
+  return fullPath;
+}
+
+/** Checks whether a resolved executable (from executablePath) is runnable. */
+export function executableExists(resolvedPath: string): boolean {
+  if (isLinux && !path.isAbsolute(resolvedPath)) {
+    return whichSync(resolvedPath) !== null;
+  }
+  return fs.existsSync(resolvedPath);
+}
+
+function whichSync(cmd: string): string | null {
+  try {
+    const result = execSync(`command -v ${cmd}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const trimmed = result.trim();
+    return trimmed ? trimmed : null;
+  } catch {
+    return null;
+  }
 }

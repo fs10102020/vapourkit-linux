@@ -2,7 +2,7 @@ import type { ModelFile, InferenceBackend } from '../electron.d';
 
 /**
  * Filters and sorts models based on the current backend.
- * 
+ *
  * Rules:
  * - TensorRT mode: Show ALL models (engines + all ONNX for rebuilding)
  * - TensorRT mode: Engines are always sorted to the top
@@ -33,7 +33,7 @@ export function filterModels(
 
 /**
  * Gets the display name for a model with appropriate labels.
- * 
+ *
  * Rules:
  * - TensorRT mode: Add [Unbuilt] prefix for ONNX without engines
  * - All other backends: Show name with display tag if available
@@ -43,15 +43,15 @@ export function getModelDisplayName(
   backend: InferenceBackend
 ): string {
   let displayName = model.name;
-  
+
   if (model.displayTag) {
     displayName = `${displayName} [${model.displayTag}]`;
   }
-  
+
   if (backend === 'tensorrt' && model.backend === 'onnx' && !model.hasEngine) {
     displayName = '[Unbuilt] ' + displayName;
   }
-  
+
   return displayName;
 }
 
@@ -66,7 +66,7 @@ export function modelNeedsBuild(
   if (!model || backend !== 'tensorrt') {
     return false;
   }
-  
+
   return model.backend === 'onnx' && !model.hasEngine;
 }
 
@@ -81,7 +81,7 @@ export function shouldShowBuildNotification(
   if (!model || backend !== 'tensorrt') {
     return false;
   }
-  
+
   return model.backend === 'onnx';
 }
 
@@ -89,10 +89,10 @@ export function shouldShowBuildNotification(
  * Extracts all AI model paths from enabled filters.
  * Used to determine which models are actually being used.
  */
-export function getEnabledAIModelPaths(filters: Array<{ 
-  enabled: boolean; 
-  filterType: string; 
-  modelPath?: string 
+export function getEnabledAIModelPaths(filters: Array<{
+  enabled: boolean;
+  filterType: string;
+  modelPath?: string
 }>): string[] {
   return filters
     .filter(f => f.enabled && f.filterType === 'aiModel' && f.modelPath)
@@ -102,7 +102,7 @@ export function getEnabledAIModelPaths(filters: Array<{
 /**
  * Extracts a portable model name from a full model path.
  * Removes the precision suffix (_fp16, _fp32) and file extension (.onnx, .engine).
- * 
+ *
  * Examples:
  * - "C:\...\2x-AniRemaster_TSPAN_fp16.onnx" -> "2x-AniRemaster_TSPAN"
  * - "C:\...\2x-AniRemaster_TSPAN_fp16_fp16.engine" -> "2x-AniRemaster_TSPAN"
@@ -111,56 +111,98 @@ export function getEnabledAIModelPaths(filters: Array<{
 export function getPortableModelName(modelPath: string): string {
   // Extract filename from path
   const filename = modelPath.split(/[\\/]/).pop() || modelPath;
-  
+
   // Remove file extension (.onnx, .engine, etc.)
   let baseName = filename.replace(/\.(onnx|engine)$/i, '');
-  
+
   // Remove precision suffixes (_fp16, _fp32)
   // Handle cases like "_fp16_fp16" (double suffix from engine builds)
   baseName = baseName.replace(/_fp(16|32)(_fp(16|32))?$/i, '');
-  
+
   return baseName;
 }
 
 /**
  * Resolves a portable model name to an actual model path from available models.
- * Looks for any model that matches the base name, regardless of precision or extension.
- * Prefers TensorRT engines over ONNX models when both are available.
- * 
- * @param portableModelName - The portable model name (e.g., "2x-AniRemaster_TSPAN")
+ * The backend strictly determines which file extension is required:
+ * - TensorRT: prefers .engine, falls back to .onnx only if no engine exists
+ * - ONNX backends: ONLY .onnx is acceptable
+ *
+ * @param portableModelName - The portable model name (e.g. "2x-AniRemaster_TSPAN")
  * @param availableModels - List of available models
+ * @param backend - Current inference backend (determines acceptable extensions)
  * @returns The full path to the matching model, or null if not found
  */
 export function resolvePortableModelName(
   portableModelName: string,
-  availableModels: ModelFile[]
+  availableModels: ModelFile[],
+  backend?: InferenceBackend
 ): string | null {
   if (!portableModelName) {
     return null;
   }
-  
+
   // Find all models that match the portable name
   const matchingModels = availableModels.filter(model => {
     const modelPortableName = getPortableModelName(model.path);
     return modelPortableName === portableModelName;
   });
-  
+
   if (matchingModels.length === 0) {
     return null;
   }
-  
-  // Prefer TensorRT engines over ONNX models
-  const engineModel = matchingModels.find(m => m.backend === 'tensorrt');
-  if (engineModel) {
-    return engineModel.path;
+
+  if (backend === 'tensorrt') {
+    // TensorRT: require .engine if available, otherwise fallback to .onnx for building
+    const engineModel = matchingModels.find(m => m.backend === 'tensorrt');
+    if (engineModel) {
+      return engineModel.path;
+    }
+    const onnxModel = matchingModels.find(m => m.backend === 'onnx');
+    if (onnxModel) {
+      return onnxModel.path;
+    }
+  } else {
+    // ONNX backends: ONLY .onnx is acceptable
+    const onnxModel = matchingModels.find(m => m.backend === 'onnx');
+    if (onnxModel) {
+      return onnxModel.path;
+    }
+    // If no ONNX model exists, return null so the caller can show a clear error
+    return null;
   }
-  
-  // Fall back to first ONNX model
-  const onnxModel = matchingModels.find(m => m.backend === 'onnx');
-  if (onnxModel) {
-    return onnxModel.path;
-  }
-  
-  // Return first available match as last resort
+
+  // Ultimate fallback (should rarely hit)
   return matchingModels[0].path;
+}
+
+/**
+ * Returns the correct model path string for script generation given a backend.
+ * ONNX backends refuse engine paths; TensorRT prefers engines.
+ */
+export function resolveModelPathForBackend(
+  modelPath: string,
+  backend: InferenceBackend
+): string | null {
+  const isEngine = modelPath.toLowerCase().endsWith('.engine');
+  const isOnnx = modelPath.toLowerCase().endsWith('.onnx');
+
+  if (backend === 'tensorrt') {
+    return modelPath;
+  }
+
+  // ONNX backends
+  if (isOnnx) {
+    return modelPath;
+  }
+  if (isEngine) {
+    // Derive the ONNX path from the engine path correctly:
+    // e.g. model_fp16_fp16.engine -> model_fp16.onnx (strip one precision suffix)
+    let onnxPath = modelPath.replace(/\.engine$/i, '.onnx');
+    // Strip the extra _fp16 that engine builds add
+    onnxPath = onnxPath.replace(/_fp(16|32)(?=_fp(16|32)\.onnx$)/i, '');
+    return onnxPath;
+  }
+
+  return modelPath;
 }

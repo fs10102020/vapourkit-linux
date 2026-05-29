@@ -1,8 +1,11 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import { logger } from './logger';
 import { PATHS } from './constants';
 import { isWindows, isLinux, platformSpawnOptions } from './platform';
+import { getLinuxVsPluginSearchPaths } from './linuxRuntime';
 
 export interface ProcessResult {
   stdout: string;
@@ -28,6 +31,10 @@ export function fixAsarPath(filePath: string): string {
 }
 
 export function getBundledBasePath(): string {
+  const envBase = process.env.VAPOURKIT_BUNDLED_BASE;
+  if (envBase) {
+    return fixAsarPath(envBase);
+  }
   const { app } = require('electron');
   return fixAsarPath(app.getAppPath());
 }
@@ -39,10 +46,14 @@ export async function runCommand(
   env?: NodeJS.ProcessEnv
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    logger.debug(`Running command: ${command} ${args.join(' ')}`);
+    // Quote paths containing spaces for shell safety (Windows and Linux)
+    const quotedCommand = command.includes(' ') ? `"${command}"` : command;
+    const quotedArgs = args.map(arg => arg.includes(' ') ? `"${arg}"` : arg);
+
+    logger.debug(`Running command: ${quotedCommand} ${quotedArgs.join(' ')}`);
     logger.debug(`Working directory: ${cwd || process.cwd()}`);
 
-    const proc = spawn(command, args, {
+    const proc = spawn(quotedCommand, quotedArgs, {
       cwd: cwd || process.cwd(),
       shell: true,
       env: env || process.env,
@@ -89,7 +100,39 @@ export async function runCommand(
 export function setupVSEnvironment(pythonPath?: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
 
-  if (pythonPath) {
+  if (isLinux) {
+    const pythonDir = path.dirname(pythonPath || PATHS.PYTHON);
+    env['PATH'] = `${pythonDir}${path.delimiter}${env['PATH'] || ''}`;
+
+    const vsLibDir = path.join(path.dirname(pythonDir), 'lib');
+    const ldPath = env['LD_LIBRARY_PATH']
+      ? `${vsLibDir}${path.delimiter}${env['LD_LIBRARY_PATH']}`
+      : vsLibDir;
+    env['LD_LIBRARY_PATH'] = ldPath;
+
+    if (env['PYTHONHOME']) {
+      delete env['PYTHONHOME'];
+    }
+
+    // Expose venv site-packages so system vspipe can import packages installed into our venv
+    const venvRoot = path.dirname(pythonDir);
+    const sitePackagesCandidates = [
+      path.join(venvRoot, 'lib', 'python3.13', 'site-packages'),
+      path.join(venvRoot, 'lib', 'python3.12', 'site-packages'),
+      path.join(venvRoot, 'lib', 'python3.11', 'site-packages'),
+      path.join(venvRoot, 'lib', 'python3.10', 'site-packages'),
+      path.join(venvRoot, 'lib', 'python3.9', 'site-packages'),
+      path.join(venvRoot, 'lib', 'python3', 'site-packages'),
+    ];
+    const sitePackages = sitePackagesCandidates.find(sp => fs.existsSync(sp));
+    if (sitePackages) {
+      env['PYTHONPATH'] = env['PYTHONPATH']
+        ? `${sitePackages}${path.delimiter}${env['PYTHONPATH']}`
+        : sitePackages;
+    }
+  }
+
+  if (pythonPath && !isLinux) {
     const pythonDir = path.dirname(pythonPath);
     env['PATH'] = `${pythonDir}${path.delimiter}${env['PATH'] || ''}`;
 
@@ -97,22 +140,18 @@ export function setupVSEnvironment(pythonPath?: string): NodeJS.ProcessEnv {
       env['PYTHONHOME'] = pythonDir;
       env['PYTHONPATH'] = path.join(pythonDir, 'Lib', 'site-packages');
     }
-
-    if (isLinux) {
-      const vsLibDir = path.join(path.dirname(pythonDir), 'lib');
-      const ldPath = env['LD_LIBRARY_PATH']
-        ? `${vsLibDir}${path.delimiter}${env['LD_LIBRARY_PATH']}`
-        : vsLibDir;
-      env['LD_LIBRARY_PATH'] = ldPath;
-
-      if (env['PYTHONHOME']) {
-        delete env['PYTHONHOME'];
-      }
-    }
   }
 
-  env['VS_PLUGINS_PATH'] = PATHS.PLUGINS;
-  env['VAPOURSYNTH_PLUGINS_PATH'] = PATHS.PLUGINS;
+  // Blend app-data, system, Flatpak, and pre-existing VapourSynth plugin paths on Linux
+  if (isLinux) {
+    const pluginDirs = getLinuxVsPluginSearchPaths();
+    const combined = pluginDirs.join(path.delimiter);
+    env['VS_PLUGINS_PATH'] = combined;
+    env['VAPOURSYNTH_PLUGINS_PATH'] = combined;
+  } else {
+    env['VS_PLUGINS_PATH'] = PATHS.PLUGINS;
+    env['VAPOURSYNTH_PLUGINS_PATH'] = PATHS.PLUGINS;
+  }
 
   return env;
 }

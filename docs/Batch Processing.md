@@ -1,6 +1,6 @@
 ## Batch Processing
 
-Process multiple videos in a queue, each with its own settings captured at the time you select it.
+Process multiple videos in a queue, each with its own workflow and encoding settings captured at the time you add it.
 
 ### How It Works
 
@@ -9,39 +9,27 @@ Process multiple videos in a queue, each with its own settings captured at the t
 3. **Add to Queue**: Click "Add Videos to Queue"
 4. **Process**: Click "Start Queue" - videos process one at a time
 
-### Simple Mode
+### Processing With Filter Chains
 
-Process multiple videos with the same upscaling model.
+Batch items use the same filter chain and model selection UI as single-file processing.
 
 **Steps**:
-1. Select your upscaling model
+1. Build your filter pipeline:
+   - Add and configure filters
+   - Optionally add AI model filters
 2. Choose output format and backend
 3. Select multiple videos
-4. Review output paths in the modal
+4. Review workflow summary and output paths
 5. Click "Add Videos to Queue"
 6. Click "Start Queue"
 
-### Advanced Mode
-
-Process videos with custom filter chains.
-
-**Steps**:
-1. Enable Advanced Mode (click `<>` icon)
-2. Build your filter pipeline:
-   - Add and configure filters
-   - Optionally add AI models
-3. Choose output format and backend
-4. Select multiple videos
-5. Review workflow summary and output paths
-6. Click "Add Videos to Queue"
-7. Click "Start Queue"
-
 ### Key Features
 
-- **Workflow Snapshots**: Each video captures your settings at selection time - changing settings later won't affect queued videos
+- **Workflow Snapshots**: Each video captures filters, model paths, backend, number of streams, encoding settings, and segment settings at queue-add time. Changing settings later will not affect queued videos.
 - **Auto Paths**: Output paths are auto-generated with `_upscaled` suffix (e.g., `video.mp4` → `video_upscaled.mkv`. Existing files are overwritten without warning)
 - **Queue Management**: Reorder by dragging, cancel items, requeue failed videos, or clear completed items
-- **Persistent**: Queue saves automatically
+- **Persistent**: Queue saves automatically to `data/config/queue.json` in development and to the app-data config directory in packaged Linux builds.
+- **Backend Migration**: Older queue items without backend metadata are migrated on load. Unsupported DirectML queue entries on Linux are remapped to ONNX Runtime CPU.
 
 ### Tips
 

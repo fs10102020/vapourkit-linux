@@ -14,8 +14,8 @@ import { cancelAllVideoProcessing } from './videoHandlers';
 
 const windowManager = new WindowManager();
 
-// Set portable userData path (makes localStorage local to installation)
-if (app.isPackaged) {
+// Set portable userData path for Windows (makes localStorage local to installation)
+if (process.platform === 'win32' && app.isPackaged) {
   const portableUserDataPath = path.join(path.dirname(app.getPath('exe')), 'data', 'user-data');
   app.setPath('userData', portableUserDataPath);
   logger.info(`Using portable userData path: ${portableUserDataPath}`);

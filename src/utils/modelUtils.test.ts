@@ -7,6 +7,7 @@ import {
   getEnabledAIModelPaths,
   getPortableModelName,
   resolvePortableModelName,
+  resolveModelPathForBackend,
 } from './modelUtils';
 import type { ModelFile } from '../electron.d';
 
@@ -166,13 +167,55 @@ describe('resolvePortableModelName', () => {
     expect(resolvePortableModelName('NonExistent', models)).toBeNull();
   });
 
-  it('prefers TensorRT engine over ONNX', () => {
-    const result = resolvePortableModelName('MyModel', models);
+  it('prefers ONNX when backend is onnxruntime-cpu', () => {
+    const result = resolvePortableModelName('MyModel', models, 'onnxruntime-cpu');
+    expect(result).toBe('/models/MyModel_fp16.onnx');
+  });
+
+  it('prefers ONNX when backend is onnxruntime-cuda', () => {
+    const result = resolvePortableModelName('MyModel', models, 'onnxruntime-cuda');
+    expect(result).toBe('/models/MyModel_fp16.onnx');
+  });
+
+  it('prefers engine when backend is tensorrt', () => {
+    const result = resolvePortableModelName('MyModel', models, 'tensorrt');
     expect(result).toBe('/models/MyModel_fp16_fp16.engine');
   });
 
-  it('falls back to ONNX when no engine exists', () => {
-    const result = resolvePortableModelName('Other', models);
+  it('falls back to ONNX in tensorrt mode when no engine exists', () => {
+    const result = resolvePortableModelName('Other', models, 'tensorrt');
     expect(result).toBe('/models/Other.onnx');
+  });
+
+  it('returns null for ONNX-only model when using ONNX backend', () => {
+    const onnxOnly = [makeModel({ path: '/models/Only.onnx', name: 'Only', backend: 'onnx' })];
+    expect(resolvePortableModelName('Only', onnxOnly, 'onnxruntime-cpu')).toBe('/models/Only.onnx');
+  });
+
+  it('returns null for engine-only model when using ONNX backend', () => {
+    const engineOnly = [makeModel({ path: '/models/Only.engine', name: 'Only', backend: 'tensorrt' })];
+    expect(resolvePortableModelName('Only', engineOnly, 'onnxruntime-cpu')).toBeNull();
+  });
+});
+
+describe('resolveModelPathForBackend', () => {
+  it('returns engine path unchanged for tensorrt', () => {
+    expect(resolveModelPathForBackend('/models/a.engine', 'tensorrt')).toBe('/models/a.engine');
+  });
+
+  it('returns onnx path unchanged for onnx backends', () => {
+    expect(resolveModelPathForBackend('/models/a.onnx', 'onnxruntime-cuda')).toBe('/models/a.onnx');
+  });
+
+  it('derives onnx from engine correctly for onnx backends', () => {
+    expect(resolveModelPathForBackend('/models/a_fp16_fp16.engine', 'onnxruntime-cpu')).toBe('/models/a_fp16.onnx');
+  });
+
+  it('derives onnx from engine without extra suffix', () => {
+    expect(resolveModelPathForBackend('/models/a_fp32_fp32.engine', 'onnxruntime-cuda')).toBe('/models/a_fp32.onnx');
+  });
+
+  it('returns bare path unchanged if extension is unknown', () => {
+    expect(resolveModelPathForBackend('/models/a.pb', 'onnxruntime-cpu')).toBe('/models/a.pb');
   });
 });

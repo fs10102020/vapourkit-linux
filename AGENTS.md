@@ -2,7 +2,7 @@
 
 ## Architecture
 
-Two-process Electron app (Windows-only). No monorepo.
+Two-process Electron app with Windows and Linux support. No monorepo.
 
 | Process | Source | Output | Module |
 |---|---|---|---|
@@ -19,6 +19,7 @@ npm run build        # tsc + vite build + compile electron TS
 npm test             # Frontend tests (vitest): src/**/*.test.ts
 npm run test:electron # Electron tests (vitest): electron/**/*.test.ts
 npm run update-docs  # Regenerate docs/Models.md from src/data/modelLicenses.ts
+npm run build:linux  # Build configured Linux electron-builder targets
 ```
 
 No `lint` or `typecheck` scripts exist. TypeScript compilation is the validation step.
@@ -67,19 +68,34 @@ The template is overwritten from bundled source on every app version upgrade. Do
 
 ## Path conventions
 
-All filesystem paths through the `PATHS` object in `electron/constants.ts`. Executables use getters (e.g., `PATHS.VSPIPE`, `PATHS.TRTEXEC`). The base `APP_DATA_PATH` is:
-- **Production**: `<exe-dir>/data`
+All filesystem paths through the `PATHS` object in `electron/constants.ts`. Executables use getters (e.g., `PATHS.VSPIPE`, `PATHS.TRTEXEC`) because Linux may resolve to system binaries on `PATH`.
+
+The base `APP_DATA_PATH` is:
+- **Windows production**: `<exe-dir>/data`
+- **Linux packaged**: Electron `userData` path (Flatpak/AppImage/native package safe)
 - **Development**: `<project-root>/data`
+
+Linux runtime helpers live in `electron/linuxRuntime.ts`. Do not import `linuxRuntime` from `platform.ts`; `linuxRuntime` depends on platform concepts and importing it back creates circular initialization hazards.
 
 To access bundled files (`include/`), always use `getBundledBasePath()` from `electron/utils.ts` — it applies ASAR unpack path fixing.
 
 ## Setup / dependency flow
 
-1. `dependencyManager.setupDependencies()` downloads core deps (VapourSynth R72, Python 3.13, vs-mlrt, FFmpeg, video-compare, BestSource)
-2. `pluginInstaller.installDependenciesForSetup()` pip-installs packages + extracts plugins/scripts/filters — auto-retries once on failure
-3. Setup completion signaled via IPC event `'setup-progress'` with `component: 'All Dependencies'`
+1. `dependencyManager.setupDependencies()` checks the platform.
+2. Windows downloads core deps (VapourSynth R72, Python 3.13, vs-mlrt, FFmpeg, video-compare, BestSource), then `pluginInstaller.installDependenciesForSetup()` pip-installs packages and extracts plugins/scripts/filters. Plugin install auto-retries once on failure.
+3. Linux uses native/system dependencies: Python, venv, pip packages, FFmpeg, VapourSynth, BestSource, and vs-mlrt plugins are detected/probed. Linux setup fails hard for Python/venv/pip/FFmpeg/VapourSynth/BestSource/ONNX Runtime plugin failures.
+4. Setup completion signaled via IPC event `'setup-progress'` with `component: 'All Dependencies'`.
 
 File locking during 7z extraction is retried 5 times with 2s delay.
+
+## Linux backend capability probing
+
+`electron/backendUtils.ts` probes actual VapourSynth namespaces through `vspipe`:
+- `core.ort` for ONNX Runtime CPU/CUDA backends
+- `core.trt` for TensorRT runtime
+- `core.bs` for BestSource
+
+TensorRT is supported only when both `core.trt` and `trtexec` are available. DirectML is Windows-only. The renderer receives `supportedBackends` and `recommendedBackend` from `get-backend-capabilities` and validates persisted settings, workflows, and queue items against that list.
 
 ## Three executor slots
 
@@ -97,7 +113,7 @@ Each is cancelled/killed before launching a new one. Executors must be null-chec
 - **ffmpeg stderr** → frame/fps parsing + progress + ETA
 - **ffmpeg stdout** → JPEG frames (for live preview), decoded and throttled to ~750ms intervals via `setImmediate` in the renderer
 
-Graceful cancel: unpipes vspipe→ffmpeg, SIGTERM vspipe (force kill after 3s), closes ffmpeg stdin to finish encoding (force kill after 10s). Force stop: immediate `taskkill /F /T`.
+Graceful cancel: unpipes vspipe→ffmpeg, SIGTERM vspipe (force kill after 3s), closes ffmpeg stdin to finish encoding (force kill after 10s). Force stop: immediate `taskkill /F /T` on Windows, process-group kill on Linux when possible.
 
 ## Configuration files (TOML)
 
@@ -110,11 +126,13 @@ Many `.vkfilter` files in `include/plugins/plugin_filters/` import from `vstools
 
 ## Queue
 
-Queue stored as JSON at `data/config/queue.json`, auto-saved with 2-second debounce. On load, items in "processing" status are reset to "pending" (app closed mid-processing). Queue items snapshot the full workflow (filters, model, encoding settings, segment) at add time.
+Queue stored as JSON at the app config path (`data/config/queue.json` in development), auto-saved with 2-second debounce. On load, items in "processing" status are reset to "pending" (app closed mid-processing). Queue items snapshot the full workflow (filters, model, backend, encoding settings, segment) at add time. Missing/unsupported backend values are migrated on load.
 
 ## vs-mlrt version tracking
 
 Version pinned in `electron/constants.ts:5` (`VS_MLRT_VERSION = '15.13'`). Stored in config. On version mismatch with existing `.engine` files, user is notified via modal to rebuild. Version is NOT auto-updated during setup — only after user acknowledges or clears engines.
+
+Upstream vs-mlrt currently publishes Windows binary releases only. Linux builds must use distro/user/Flatpak-provided `.so` plugins or a future source-build module; do not add fake Linux binary download URLs.
 
 ## GPU monitoring
 
@@ -126,10 +144,10 @@ Filter order is top-to-bottom. Undo/redo via `useFilterHistory` hook with Ctrl+Z
 
 ## Sibling repos
 
-Five repos live alongside this one and are downstream runtime dependencies (downloaded/extracted/invoked at runtime, not linked at build time):
+Five repos live alongside this one and are downstream runtime dependencies (downloaded/extracted/invoked at runtime on Windows; system/Flatpak-provided on Linux where applicable):
 
-- **vapoursynth** — `vspipe.exe` + `python.exe`, downloaded during setup
-- **vs-mlrt** — TensorRT (`trtexec.exe`) + ONNX Runtime (`vsort.dll`), downloaded during setup
+- **vapoursynth** — `vspipe.exe` + `python.exe` downloaded during Windows setup; Linux uses system/Flatpak `vspipe`
+- **vs-mlrt** — TensorRT (`trtexec.exe`/`core.trt`) + ONNX Runtime (`vsort.dll`/`core.ort`); Windows downloads binaries, Linux must provide plugins separately
 - **vs-jetpack** — pip-installed (`vsjetpack==1.1.0`), imported by filter `.vkfilter` scripts
-- **video-compare** — `video-compare.exe`, downloaded during setup, launched as detached process
+- **video-compare** — downloaded on Windows, built/provided by Linux packages/Flatpak, launched as detached process
 - **Upscale-Hub** — source of pre-bundled ONNX models (files live in `include/models/`, metadata in `stock-app-config.json`)

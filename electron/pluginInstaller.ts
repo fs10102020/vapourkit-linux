@@ -6,6 +6,7 @@ import * as fs from 'fs-extra';
 import * as https from 'https';
 import { logger } from './logger';
 import { PATHS } from './constants';
+import { isLinux } from './platform';
 import { configManager } from './configManager';
 import { getBundledBasePath } from './utils';
 import * as _7z from '7zip-min';
@@ -61,7 +62,7 @@ export class PluginInstaller {
 
     return new Promise((resolve) => {
       this.installProcess = spawn(PATHS.PYTHON, args, {
-        cwd: PATHS.VS,
+        cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,
         windowsHide: true
       });
 
@@ -402,7 +403,7 @@ export class PluginInstaller {
     
     return new Promise((resolve) => {
       const checkProcess = spawn(PATHS.PYTHON, args, {
-        cwd: PATHS.VS,
+        cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,
         windowsHide: true
       });
 
@@ -476,7 +477,7 @@ export class PluginInstaller {
 
       return new Promise((resolve) => {
         this.installProcess = spawn(PATHS.PYTHON, args, {
-          cwd: PATHS.VS,
+          cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,
           windowsHide: true
         });
 

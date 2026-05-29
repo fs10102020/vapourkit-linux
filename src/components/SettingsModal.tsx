@@ -8,6 +8,7 @@ interface SettingsModalProps {
   onClose: () => void;
   backend: InferenceBackend;
   onSetBackend: (backend: InferenceBackend) => void;
+  supportedBackends: InferenceBackend[];
   numStreams: number;
   onUpdateNumStreams: (value: number) => void;
   videoCompareArgs: string;
@@ -27,6 +28,7 @@ export const SettingsModal = memo<SettingsModalProps>(({
   onClose, 
   backend, 
   onSetBackend,
+  supportedBackends,
   numStreams,
   onUpdateNumStreams,
   videoCompareArgs,
@@ -155,7 +157,7 @@ export const SettingsModal = memo<SettingsModalProps>(({
                 <div className="bg-dark-surface rounded-lg p-4 border border-gray-700">
                   <p className="text-sm font-medium text-white mb-3">Inference Backend</p>
                   <div className="space-y-2">
-                    {(['tensorrt', 'onnxruntime-cuda', 'onnxruntime-cpu'] as InferenceBackend[]).map((be) => (
+                    {supportedBackends.map((be) => (
                       <label key={be} className="flex items-start gap-3 cursor-pointer">
                         <input
                           type="radio"
@@ -179,6 +181,11 @@ export const SettingsModal = memo<SettingsModalProps>(({
                           {be === 'onnxruntime-cpu' && (
                             <p className="text-xs text-gray-400 mt-1">
                               ONNX Runtime CPU execution. Works everywhere but is significantly slower.
+                            </p>
+                          )}
+                          {be === 'directml' && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              DirectML backend for broader GPU compatibility (AMD, Intel, NVIDIA). Uses ONNX models directly without requiring TensorRT engine conversion.
                             </p>
                           )}
                         </div>

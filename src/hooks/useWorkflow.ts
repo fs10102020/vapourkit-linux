@@ -22,6 +22,7 @@ interface WorkflowState {
   previousFilters: Filter[];
   previousModel: string | null;
   previousEncodingSettings?: {
+    backend?: InferenceBackend;
     ffmpegArgs: string;
     processingFormat: string;
     outputFormat: string;
@@ -87,6 +88,7 @@ export function useWorkflow({
   processingFormat,
   outputFormat,
   videoCompareArgs,
+  backend,
   numStreams,
   segment,
   colorimetry,
@@ -94,6 +96,7 @@ export function useWorkflow({
   setProcessingFormat,
   setOutputFormat,
   setVideoCompareArgs,
+  setBackend,
   updateNumStreams,
   setSegment,
   handleColorimetryChange,
@@ -129,6 +132,7 @@ export function useWorkflow({
         outputFormat !== undefined && videoCompareArgs !== undefined && 
         numStreams !== undefined && segment !== undefined && colorimetry !== undefined
         ? {
+            backend,
             ffmpegArgs,
             processingFormat,
             outputFormat,
@@ -140,7 +144,7 @@ export function useWorkflow({
         : undefined,
     }));
     addConsoleLog('Saved current settings before loading workflow');
-  }, [filters, selectedModel, deepCopyFilters, addConsoleLog, ffmpegArgs, processingFormat, 
+  }, [filters, selectedModel, deepCopyFilters, addConsoleLog, backend, ffmpegArgs, processingFormat,
       outputFormat, videoCompareArgs, numStreams, segment, colorimetry]);
 
   /**
@@ -171,6 +175,26 @@ export function useWorkflow({
       const displayName = workflow.name.replace(/\.vkworkflow$/i, '');
       setWorkflowState(prev => ({ ...prev, currentWorkflow: displayName }));
 
+      // Normalize workflow backend BEFORE resolving models
+      const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform);
+      const currentBackend: InferenceBackend = backend || (isWindows ? 'directml' : 'onnxruntime-cpu');
+      let targetBackend: InferenceBackend = currentBackend;
+      if (workflow.encodingSettings?.backend) {
+        const raw = workflow.encodingSettings.backend;
+        // Basic platform validation
+        if (raw === 'directml' && !isWindows) {
+          targetBackend = 'onnxruntime-cpu';
+          addConsoleLog(`Workflow backend '${raw}' is unsupported on this platform; remapped to '${targetBackend}'`);
+        } else {
+          targetBackend = raw;
+        }
+      }
+
+      // Apply backend early so model resolution uses the workflow's intended backend
+      if (workflow.encodingSettings?.backend && setBackend) {
+        setBackend(targetBackend);
+      }
+
       // Get available models for resolution
       const availableModelObjects = await window.electronAPI.getAvailableModels();
 
@@ -179,14 +203,14 @@ export function useWorkflow({
 
       const workflowFilters: Filter[] = workflow.filters.map((wf, index) => {
         let resolvedModelPath = wf.modelPath;
-        
+
         // If this is an AI model filter with a modelPath, try to resolve it
         if (wf.filterType === 'aiModel' && wf.modelPath) {
-          const resolved = resolvePortableModelName(wf.modelPath, availableModelObjects);
+          const resolved = resolvePortableModelName(wf.modelPath, availableModelObjects, targetBackend);
           if (resolved) {
             resolvedModelPath = resolved;
           } else {
-            addConsoleLog(`Warning: Could not find model "${wf.modelPath}" - filter will need reconfiguration`);
+            addConsoleLog(`Warning: Could not find model "${wf.modelPath}" for backend ${targetBackend} - filter will need reconfiguration`);
             missingModels.push(wf.modelPath);
           }
         }
@@ -205,7 +229,7 @@ export function useWorkflow({
       });
       setFilters(workflowFilters);
 
-      // Apply encoding settings if present
+      // Apply remaining encoding settings
       if (workflow.encodingSettings) {
         if (workflow.encodingSettings.ffmpegArgs && setFfmpegArgs) {
           setFfmpegArgs(workflow.encodingSettings.ffmpegArgs);
@@ -238,7 +262,7 @@ export function useWorkflow({
       }
 
       addConsoleLog(`Loaded workflow "${workflow.name}" with ${workflow.filters.length} filter(s)`);
-      
+
       // Alert user if any models are missing
       if (missingModels.length > 0) {
         const modelList = missingModels.join('\n- ');
@@ -259,8 +283,10 @@ export function useWorkflow({
     setOutputFormat,
     setVideoCompareArgs,
     updateNumStreams,
+    setBackend,
     setSegment,
     handleColorimetryChange,
+    backend,
   ]);
 
   /**
@@ -290,6 +316,7 @@ export function useWorkflow({
       if (setOutputFormat) setOutputFormat(prev.outputFormat);
       if (setVideoCompareArgs) setVideoCompareArgs(prev.videoCompareArgs);
       if (updateNumStreams) updateNumStreams(prev.numStreams);
+      if (prev.backend && setBackend) setBackend(prev.backend);
       if (setSegment) setSegment(prev.segment);
       if (handleColorimetryChange) handleColorimetryChange(prev.colorimetry);
       addConsoleLog('Restored previous encoding settings');
@@ -313,6 +340,7 @@ export function useWorkflow({
     setProcessingFormat,
     setOutputFormat,
     setVideoCompareArgs,
+    setBackend,
     updateNumStreams,
     setSegment,
     handleColorimetryChange,
@@ -362,6 +390,7 @@ export function useWorkflow({
           outputFormat !== undefined && videoCompareArgs !== undefined &&
           numStreams !== undefined && segment !== undefined && colorimetry !== undefined
           ? {
+              backend,
               ffmpegArgs,
               processingFormat,
               outputFormat,
@@ -385,7 +414,7 @@ export function useWorkflow({
       notify.error('Export Error', getErrorMessage(error));
     }
   }, [filters, deepCopyFilters, addConsoleLog, filterTemplates, ffmpegArgs, processingFormat, outputFormat, 
-      videoCompareArgs, numStreams, segment, colorimetry]);
+      videoCompareArgs, backend, numStreams, segment, colorimetry]);
 
   /**
    * Import filters from a workflow file permanently

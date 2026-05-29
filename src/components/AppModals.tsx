@@ -9,7 +9,7 @@ import { PluginsModal } from './PluginsModal';
 import { UpdateNotificationModal } from './UpdateNotificationModal';
 import { VsMlrtUpdateModal } from './VsMlrtUpdateModal';
 import { FilterImportModal } from './FilterImportModal';
-import type { UpdateInfo, VsMlrtVersionInfo, InferenceBackend } from '../electron';
+import type { UpdateInfo, VsMlrtVersionInfo, InferenceBackend, BackendCapabilities } from '../electron';
 
 interface AppModalsProps {
   // Import Model
@@ -43,6 +43,7 @@ interface AppModalsProps {
   numStreams: number;
   onUpdateNumStreams: (streams: number) => void;
   onSetBackend: (backend: InferenceBackend) => void;
+  backendCapabilities: BackendCapabilities | null;
   videoCompareArgs: string;
   onUpdateVideoCompareArgs: (args: string) => void;
   onResetVideoCompareArgs: () => void;
@@ -115,6 +116,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
         onClose={props.onCloseSettings}
         backend={props.backend}
         onSetBackend={props.onSetBackend}
+        supportedBackends={props.backendCapabilities?.supportedBackends?.length ? props.backendCapabilities.supportedBackends : [props.backend]}
         numStreams={props.numStreams}
         onUpdateNumStreams={props.onUpdateNumStreams}
         videoCompareArgs={props.videoCompareArgs}

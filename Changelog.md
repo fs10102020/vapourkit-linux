@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+- Add Linux runtime support for native, AppImage, deb/rpm, and Flatpak builds
+  - Linux uses system VapourSynth, FFmpeg, Python, BestSource, and vs-mlrt plugins instead of Windows portable dependency downloads
+  - App data/log paths now avoid read-only packaged locations on Linux
+  - VapourSynth plugin search paths include app data, Flatpak, system, user-local, and environment-provided locations
+- Add runtime backend capability probing
+  - Probes `core.ort`, `core.trt`, and `core.bs` through `vspipe`
+  - Shows only supported inference backends in Settings
+  - Defaults Linux to ONNX Runtime CPU when no accelerated backend is available
+- Add ONNX Runtime backend handling for Linux workflows and queues
+  - ONNX backends resolve `.onnx` paths and reject engine-only portable model matches
+  - TensorRT still prefers `.engine` files and can fall back to `.onnx` for engine building
+  - Saved workflows and queue items migrate unsupported DirectML selections on Linux
+- Add Flatpak packaging files and generated npm source metadata
+  - Flatpak manifest builds FFmpeg, VapourSynth, BestSource, video-compare, and the Python venv
+  - Documents current vs-mlrt Linux binary gap; packagers must provide `core.ort`/`core.trt` separately until a source-build module is added
+- Add Linux electron-builder targets and system dependency metadata for AppImage, deb, and rpm builds
+
 ## 0.16.1
 - Fix `Cannot read properties of null (reading 'execute')` crash when canceling or restarting an upscale during the frame count probe
   - Same fix applied to the preview-segment path

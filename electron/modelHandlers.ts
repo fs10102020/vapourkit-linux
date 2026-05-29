@@ -9,6 +9,7 @@ import { sendModelImportProgress } from './ipcUtilities';
 import { ModelExtractor } from './modelExtractor';
 import { handleValidated } from './ipcValidation';
 import { z } from 'zod';
+import { isLinux } from './platform';
 
 // Module-level ModelExtractor instance for cancellation support
 let activeModelExtractor: ModelExtractor | null = null;
@@ -276,7 +277,8 @@ export function registerModelHandlers(mainWindow: BrowserWindow | null) {
       logger.model(`Model name: ${params.modelName}`);
       logger.model(`Precision: ${params.useFp32 ? 'FP32' : params.useBf16 ? 'BF16' : 'FP16'}`);
       logger.model(`Model type: ${params.modelType || 'image'}`);
-      logger.model(`Backend: ${params.backend || 'tensorrt'}`);
+      const effectiveBackend = params.backend || (isLinux ? 'onnxruntime-cpu' : 'tensorrt');
+      logger.model(`Backend: ${effectiveBackend}`);
       logger.model(`Skip validation: ${params.skipValidation ? 'yes' : 'no'}`);
       
       try {
@@ -339,8 +341,8 @@ export function registerModelHandlers(mainWindow: BrowserWindow | null) {
         );
 
         // If backend doesn't require TensorRT engines, skip conversion
-        if (params.backend && params.backend !== 'tensorrt') {
-          logger.model(`Backend is ${params.backend} - skipping TensorRT conversion`);
+        if (effectiveBackend !== 'tensorrt') {
+          logger.model(`Backend is ${effectiveBackend} - skipping TensorRT conversion`);
           sendModelImportProgress(mainWindow, 'complete', 100, 'Model imported successfully!', targetOnnxPath);
           activeModelExtractor = null;
           

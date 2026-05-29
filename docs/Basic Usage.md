@@ -24,7 +24,7 @@
 **Import Workflow**:
 1. Click the Download icon in the header
 2. Select a `.vkworkflow` file
-3. All settings will be restored (note: model paths must be valid)
+3. All settings will be restored. Portable model names are resolved to the best model file for the current backend.
 
 **Load Workflow**:
 - Similar to import, but completely replaces current configuration
@@ -40,9 +40,21 @@
 - **Filter Templates**: `data/config/filter-templates/` - Custom filter definitions
 - **Workflows**: User-defined location with `.vkworkflow` extension
 
+On Linux packaged builds, app data is stored in the platform user-data location instead of beside the executable. In development, Linux and Windows both use the project `data/` directory.
+
 ### Model Files
 
 - **Location**: `include/models/` (built-in) or `data/models/` (runtime)
 - **Formats**: 
   - `.onnx` - ONNX model files (universal)
   - `.engine` - TensorRT engine files (NVIDIA-specific, GPU-bound)
+
+### Inference Backends
+
+The backend selector only shows backends that are supported by the current runtime:
+- **TensorRT**: Uses `.engine` files and requires NVIDIA TensorRT support. On Linux, both `core.trt` and `trtexec` must be available.
+- **ONNX Runtime CUDA**: Uses `.onnx` files with CUDA acceleration through `core.ort`.
+- **ONNX Runtime CPU**: Uses `.onnx` files on CPU. This is the broadest Linux fallback but is slower.
+- **DirectML**: Windows-only ONNX Runtime backend for DirectX 12 GPUs.
+
+If a workflow or queue item was saved with an unsupported backend, Vapourkit remaps it to a supported backend before processing. Linux remaps DirectML workflows to ONNX Runtime CPU unless another supported backend is selected.

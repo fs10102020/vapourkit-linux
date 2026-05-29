@@ -4,7 +4,7 @@ import { spawn } from 'child_process';
 import { PATHS } from './constants';
 import { logger } from './logger';
 import { setupVSEnvironment } from './utils';
-import { resolveVsviewPath, isLinux } from './platform';
+import { resolveVsviewPath, isLinux, executableExists } from './platform';
 
 /**
  * Manager for vs-view - VapourSynth script previewer tool
@@ -20,11 +20,12 @@ export class VsViewManager {
   static async isInstalled(): Promise<boolean> {
     try {
       const env = setupVSEnvironment();
+      const vsCwd = isLinux ? PATHS.APP_DATA : PATHS.VS;
       
       // Check if vsview is installed by running pip list
       const child = spawn(PATHS.PYTHON, ['-m', 'pip', 'list'], {
         env,
-        cwd: PATHS.VS
+        cwd: vsCwd
       });
       
       return new Promise((resolve) => {
@@ -62,11 +63,12 @@ export class VsViewManager {
     
     try {
       const env = setupVSEnvironment();
+      const vsCwd = isLinux ? PATHS.APP_DATA : PATHS.VS;
       
       // Install vsview==0.5.0
       const child = spawn(PATHS.PYTHON, ['-m', 'pip', 'install', 'vsview==0.5.0'], {
         env,
-        cwd: PATHS.VS,
+        cwd: vsCwd,
         stdio: 'pipe'
       });
       
@@ -116,7 +118,7 @@ export class VsViewManager {
 
       const listChild = spawn(PATHS.PYTHON, ['-m', 'pip', 'list'], {
         env,
-        cwd: PATHS.VS
+        cwd: isLinux ? PATHS.APP_DATA : PATHS.VS
       });
 
       const hasVsPreview = await new Promise<boolean>((resolve) => {
@@ -134,7 +136,7 @@ export class VsViewManager {
 
       const uninstallChild = spawn(PATHS.PYTHON, ['-m', 'pip', 'uninstall', '-y', 'vspreview'], {
         env,
-        cwd: PATHS.VS,
+        cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,
         stdio: 'pipe'
       });
 
@@ -175,7 +177,7 @@ export class VsViewManager {
       }
 
       // Verify Python executable exists
-      if (!fs.existsSync(PATHS.PYTHON)) {
+      if (!executableExists(PATHS.PYTHON)) {
         const error = 'Python executable not found. VapourSynth dependencies may not be installed correctly.';
         logger.error(error);
         return { success: false, error };
@@ -197,7 +199,8 @@ export class VsViewManager {
       // Setup environment for VapourSynth
       const env = setupVSEnvironment();
 
-      const vsviewExe = resolveVsviewPath(PATHS.VS);
+      const vsviewBase = isLinux ? PATHS.PYTHON_VENV : PATHS.VS;
+      const vsviewExe = resolveVsviewPath(vsviewBase);
       if (!fs.existsSync(vsviewExe)) {
         const error = `vs-view executable not found at: ${vsviewExe}. The pip install may not have completed.`;
         logger.error(error);
@@ -208,8 +211,8 @@ export class VsViewManager {
 
       const child = spawn(vsviewExe, [scriptPath], {
         detached: true,
-        stdio: 'pipe', // Capture output to detect launch errors
-        cwd: PATHS.VS,
+        stdio: 'pipe',
+        cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,
         env
       });
       

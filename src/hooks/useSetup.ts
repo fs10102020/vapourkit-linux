@@ -60,9 +60,19 @@ export function useSetup(onLog: (message: string) => void) {
     setIsSettingUp(true);
     setPluginInstallError(null);
 
-    // Clear localStorage to prevent persistence issues from previous installations.
+    // Clear localStorage to prevent persistence issues from previous installations,
+    // but preserve user preference keys.
     onLog('Clearing previous application data...');
+    const keysToPreserve = ['inferenceBackend', 'numStreams', 'privacyMode', 'panelSizes'];
+    const preserved: Record<string, string> = {};
+    keysToPreserve.forEach(key => {
+      const value = localStorage.getItem(key);
+      if (value !== null) preserved[key] = value;
+    });
     localStorage.clear();
+    Object.entries(preserved).forEach(([key, value]) => {
+      localStorage.setItem(key, value);
+    });
 
     onLog('Starting dependency setup...');
     await window.electronAPI.setupDependencies();

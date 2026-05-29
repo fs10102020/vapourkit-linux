@@ -1,21 +1,36 @@
 # Vapourkit
 
 ![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FKim2091%2Fvapourkit%2Fmain%2Fpackage.json&query=%24.version&label=version&color=blue)
-![License](https://img.shields.io/badge/license-GPL%203.0-green)
-![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
 ![Discord](https://img.shields.io/discord/1470824551456706580)
 
 
-**Vapourkit** is a free, open source program for video upscaling and enhancement using VapourSynth and AI models. It provides a user-friendly interface for video processing with support for both NVIDIA TensorRT and DirectML (AMD/Intel/NVIDIA) backends.
+**Vapourkit** is a free, open source program for video upscaling and enhancement using VapourSynth and AI models. It provides a user-friendly interface for video processing with support for TensorRT, ONNX Runtime CUDA/CPU, and DirectML backends where available.
 
 <img width="2033" height="1248" alt="image" src="https://github.com/user-attachments/assets/8a821fae-1060-4178-9134-e398048534bc" />
 
 ## 🚀 Getting Started
 
 ### Installation
+
+#### Windows
 [**Free download here**](https://ko-fi.com/s/2e5ebd456d)
 1. Download and extract/install to your desired location
 2. On first launch, click "Start Setup" when prompted to install dependencies
+
+#### Linux
+Linux support uses system VapourSynth, Python, FFmpeg, and VapourSynth plugins instead of the Windows portable runtime. Flatpak is the primary Linux packaging target; AppImage, deb, and rpm builds are also configured and declare system package dependencies.
+
+Required runtime tools:
+- `ffmpeg` and `ffprobe`
+- `python3` and `python3-venv`
+- `vspipe` from VapourSynth R77 or newer
+- BestSource VapourSynth plugin (`core.bs`)
+- vs-mlrt ONNX Runtime plugin (`core.ort`) for ONNX Runtime CPU/CUDA backends
+- Optional: vs-mlrt TensorRT plugin (`core.trt`) and `trtexec` for TensorRT
+
+Important Linux note: upstream vs-mlrt does not currently publish pre-built Linux binaries. Install vs-mlrt through your distribution, place plugin `.so` files in a VapourSynth plugin search path, or build it from source. Vapourkit detects backend support at runtime and only exposes loadable backends.
 
 ### Quick Start
 1. Select or drag-and-drop a video file
@@ -24,13 +39,13 @@
 4. Click "Upscale Video" to process
 5. Use "Preview Output" or "Compare Videos" to review results
 
-For advanced features like custom filters and workflows, see [Advanced Mode](https://github.com/Kim2091/vapourkit/blob/main/docs/Advanced%20Mode.md).
+For custom filters, workflows, model files, and configuration details, see [Basic Usage](docs/Basic%20Usage.md).
 
 ## 🌟 Features
 
 ### Core Capabilities
 - **AI Video Upscaling**: Process videos with high quality AI upscaling models
-- **Dual Backend Support**: TensorRT (NVIDIA) or DirectML (AMD/Intel/NVIDIA)
+- **Runtime Backend Detection**: TensorRT, ONNX Runtime CUDA/CPU, and DirectML are exposed only when supported by the current platform
 - **Real-time Preview**: See results while processing
 - **Video Comparison**: Built-in side-by-side viewer
 - **Batch Processing**: Upscale multiple videos sequentially
@@ -49,13 +64,18 @@ See [Model Support](docs/Models.md) for included models, custom model requiremen
 ## 📋 System Requirements
 
 ### Minimum Requirements
-- **OS**: Windows 10/11 (x64)
+- **OS**: Windows 10/11 (x64) or Linux (x64)
 - **RAM**: 8GB+ recommended
 - **Storage**: 5 GB Minimum, 10 GB recommended free space for application and dependencies
 - **GPU**: 
   - Minimum 6 GB VRAM
-  - NVIDIA 16xx series or newer (for TensorRT) AND at least driver version 580.x!
-  - AMD/Intel GPU with DirectX 12 support (for DirectML)
+  - NVIDIA 16xx series or newer for TensorRT or ONNX Runtime CUDA, with a current NVIDIA driver
+  - AMD/Intel/NVIDIA GPU with DirectX 12 support for DirectML on Windows
+  - CPU-only ONNX Runtime works on Linux when `core.ort` is available, but it is significantly slower
+
+### Backend Availability
+- **Windows**: DirectML is available when the ONNX Runtime plugin is installed. TensorRT is available when the TensorRT plugin and `trtexec` are installed. ONNX Runtime CUDA/CPU are available when the ONNX Runtime plugin is installed.
+- **Linux**: DirectML is not available. ONNX Runtime CPU/CUDA require a loadable `core.ort` VapourSynth plugin. TensorRT requires both a loadable `core.trt` plugin and `trtexec`.
 
 ## 🔧 Development
 
@@ -63,7 +83,7 @@ See [Development](docs/Development.md) for more information.
 
 ## 📝 License
 
-GPL 3.0 - See LICENSE file for details
+GPL-3.0-or-later - See LICENSE file for details
 
 ## Discord
 Chat here about Vapourkit!

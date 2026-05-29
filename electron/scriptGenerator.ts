@@ -53,6 +53,37 @@ export interface ScriptConfig {
   generatePreviewOutputs?: boolean; // If true, add output nodes after each filter for vs-view
 }
 
+/**
+ * Returns the correct model path string for script generation given a backend.
+ * ONNX backends refuse engine paths; TensorRT prefers engines.
+ */
+function resolveModelPathForBackend(
+  modelPath: string,
+  backend: string
+): string {
+  const isEngine = modelPath.toLowerCase().endsWith('.engine');
+  const isOnnx = modelPath.toLowerCase().endsWith('.onnx');
+
+  if (backend === 'tensorrt') {
+    return modelPath;
+  }
+
+  // ONNX backends
+  if (isOnnx) {
+    return modelPath;
+  }
+  if (isEngine) {
+    // Derive the ONNX path from the engine path correctly:
+    // e.g. model_fp16_fp16.engine -> model_fp16.onnx (strip one precision suffix)
+    let onnxPath = modelPath.replace(/\.engine$/i, '.onnx');
+    // Strip the extra _fp16 that engine builds add
+    onnxPath = onnxPath.replace(/_fp(16|32)(?=_fp(16|32)\.onnx$)/i, '');
+    return onnxPath;
+  }
+
+  return modelPath;
+}
+
 export class VapourSynthScriptGenerator {
   private getTemplatePath(): string {
     const templateName = 'vapoursynth_template.vpy';
@@ -116,7 +147,8 @@ export class VapourSynthScriptGenerator {
         const filterUseFp32 = configManager.isModelFp32(filter.modelPath);
         const filterModelType = configManager.getModelType(filter.modelPath);
         const filterTemporalFrames = configManager.getTemporalFrames(filter.modelPath);
-        filterCode += this.generateAIModelCode(filter, config.backend || 'tensorrt', filterUseFp32, filterModelType, defaultMatrix, defaultPrimaries, defaultTransfer, config.numStreams, filterTemporalFrames);
+        const safeBackend = config.backend || (process.platform === 'linux' ? 'onnxruntime-cpu' : 'tensorrt');
+        filterCode += this.generateAIModelCode(filter, safeBackend, filterUseFp32, filterModelType, defaultMatrix, defaultPrimaries, defaultTransfer, config.numStreams, filterTemporalFrames);
       } else if (filter.filterType === 'custom' && filter.code.trim()) {
         // Insert custom filter code
         filterCode += '# Custom Filter: ' + (filter.preset || 'Unnamed') + '\n';
@@ -190,19 +222,19 @@ export class VapourSynthScriptGenerator {
     if (backend === 'directml') {
       modelPlugin = 'ort';
       modelPathParam = 'network_path';
-      modelPath = filter.modelPath.replace(/\.engine$/, '.onnx');
+      modelPath = resolveModelPathForBackend(filter.modelPath, 'directml');
       const useFp16 = !useFp32;
       fp16Param = `, provider="DML", device_id=0, fp16=${useFp16 ? 'True' : 'False'}, verbosity=4`;
     } else if (backend === 'onnxruntime-cuda') {
       modelPlugin = 'ort';
       modelPathParam = 'network_path';
-      modelPath = filter.modelPath.replace(/\.engine$/, '.onnx');
+      modelPath = resolveModelPathForBackend(filter.modelPath, 'onnxruntime-cuda');
       const useFp16 = !useFp32;
       fp16Param = `, provider="CUDA", device_id=0, fp16=${useFp16 ? 'True' : 'False'}, verbosity=4`;
     } else if (backend === 'onnxruntime-cpu') {
       modelPlugin = 'ort';
       modelPathParam = 'network_path';
-      modelPath = filter.modelPath.replace(/\.engine$/, '.onnx');
+      modelPath = resolveModelPathForBackend(filter.modelPath, 'onnxruntime-cpu');
       const useFp16 = !useFp32;
       fp16Param = `, provider="CPU", fp16=${useFp16 ? 'True' : 'False'}, verbosity=4`;
     } else {

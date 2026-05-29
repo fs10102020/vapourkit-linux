@@ -7,3 +7,4 @@ Type=Application
 Categories=AudioVideo;Video;
 Terminal=false
 StartupNotify=true
+StartupWMClass=vapourkit

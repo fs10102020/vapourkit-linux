@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import { PATHS } from './constants';
 import { logger } from './logger';
-import { exeName, isWindows } from './platform';
+import { exeName, isWindows, executableExists } from './platform';
 
 export class FFmpegManager {
   private static readonly FFMPEG_URL = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z';
@@ -15,7 +15,7 @@ export class FFmpegManager {
    * @returns Path to ffmpeg.exe or null if not available
    */
   static getFFmpegPath(): string | null {
-    if (fs.existsSync(FFmpegManager.FFMPEG_EXE)) {
+    if (executableExists(FFmpegManager.FFMPEG_EXE)) {
       return FFmpegManager.FFMPEG_EXE;
     }
     return null;
@@ -26,7 +26,7 @@ export class FFmpegManager {
    * @returns Path to ffprobe.exe or null if not available
    */
   static getFFprobePath(): string | null {
-    if (fs.existsSync(FFmpegManager.FFPROBE_EXE)) {
+    if (executableExists(FFmpegManager.FFPROBE_EXE)) {
       return FFmpegManager.FFPROBE_EXE;
     }
     return null;
@@ -36,7 +36,7 @@ export class FFmpegManager {
    * Checks if ffmpeg is installed
    */
   static async isInstalled(): Promise<boolean> {
-    return await fs.pathExists(FFmpegManager.FFMPEG_EXE);
+    return executableExists(FFmpegManager.FFMPEG_EXE);
   }
 
   /**

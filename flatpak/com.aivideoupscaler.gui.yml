@@ -4,6 +4,8 @@ runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
 base-version: '24.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node20
 command: vapourkit
 
 finish-args:
@@ -21,6 +23,26 @@ finish-args:
   - --talk-name=org.freedesktop.portal.OpenURI
 
 modules:
+  - name: x264
+    config-opts:
+      - --enable-shared
+      - --disable-static
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/x264.git
+        tag: stable
+
+  - name: x265
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DENABLE_SHARED=ON
+      - -DENABLE_STATIC=OFF
+    sources:
+      - type: git
+        url: https://bitbucket.org/multicoreware/x265_git.git
+        tag: '3.5'
+
   - name: ffmpeg
     config-opts:
       - --enable-shared
@@ -55,6 +77,14 @@ modules:
         url: https://github.com/vapoursynth/bestsource.git
         tag: R13
 
+  # NOTE: vs-mlrt upstream does not provide Linux pre-built binaries.
+  # The ONNX Runtime (vsort) and TensorRT (vstrt) plugins must be built
+  # from source or installed via the host distribution. Until upstream
+  # publishes Linux releases, this manifest leaves the plugins un-bundled.
+  # See: https://github.com/AmusementClub/vs-mlrt/releases
+  # Flatpak users can place .so files into ~/.local/lib/vapoursynth or
+  # the app can be extended with a Flatpak extension module.
+
   - name: video-compare
     buildsystem: simple
     build-commands:
@@ -70,13 +100,18 @@ modules:
     build-commands:
       - python3 -m venv --copies /app/python-venv
       - /app/python-venv/bin/pip install --no-cache-dir setuptools wheel pip --upgrade
-      - /app/python-venv/bin/pip install --no-cache-dir vapoursynth vsjetpack==1.1.0 vsview==0.5.0
+      - /app/python-venv/bin/pip install --no-cache-dir vapoursynth==77 vsjetpack==1.1.0 vsview==0.5.0
     sources: []
 
   - name: vapourkit
     buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node20/bin
+      env:
+        npm_config_cache: /run/build/vapourkit/flatpak-node/npm-cache
+        npm_config_offline: 'true'
     build-commands:
-      - npm install --include=dev
+      - npm ci
       - npm run build
       - mkdir -p /app/vapourkit
       - cp -r dist /app/vapourkit/
@@ -86,7 +121,8 @@ modules:
       - install -Dm755 flatpak/vapourkit.sh /app/bin/vapourkit
       - install -Dm644 flatpak/com.aivideoupscaler.gui.desktop /app/share/applications/com.aivideoupscaler.gui.desktop
       - install -Dm644 flatpak/com.aivideoupscaler.gui.metainfo.xml /app/share/metainfo/com.aivideoupscaler.gui.metainfo.xml
-      - install -Dm644 build/icon.png /app/share/icons/hicolor/256x256/apps/com.aivideoupscaler.gui.png
+      - install -Dm644 build/icon.png /app/share/icons/hicolor/512x512/apps/com.aivideoupscaler.gui.png
     sources:
       - type: dir
         path: .
+      - generated-sources.json

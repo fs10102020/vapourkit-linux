@@ -33,7 +33,7 @@
         "AI"
     ],
     "author": "Kim2091",
-    "license": "GPL 3.0",
+    "license": "GPL-3.0-or-later",
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",
         "@types/iarna__toml": "^2.0.5",
@@ -142,7 +142,13 @@
             ],
             "icon": "build/icon.png",
             "category": "AudioVideo",
-            "artifactName": "Vapourkit-${version}-${arch}.${ext}"
+            "artifactName": "Vapourkit-${version}-${arch}.${ext}",
+            "depends": [
+                "ffmpeg",
+                "vapoursynth (>= 77)",
+                "python3",
+                "python3-venv"
+            ]
         }
     }
 }

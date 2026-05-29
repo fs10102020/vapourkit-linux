@@ -191,6 +191,9 @@ export interface ElectronAPI {
   checkPluginDependencies: () => Promise<{ installed: boolean; packages: string[] }>;
   cancelPluginDependencyInstall: () => Promise<{ success: boolean }>;
   onPluginDependencyProgress: (callback: (progress: PluginDependencyProgress) => void) => () => void;
+
+  // Detailed dependency status (read-only diagnostics)
+  checkDependencyStatus: () => Promise<{ component: string; name: string; installed: boolean; path?: string; guide?: string }[]>;
   
   // Update operations
   checkForUpdates: () => Promise<{ success: boolean; data?: UpdateInfo; error?: string }>;
@@ -435,6 +438,7 @@ export interface WorkflowData {
   description?: string;
   // Encoding settings
   encodingSettings?: {
+    backend?: InferenceBackend;
     ffmpegArgs?: string;
     processingFormat?: string;
     outputFormat?: string;

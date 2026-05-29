@@ -4,13 +4,13 @@
   <name>VapourKit</name>
   <summary>AI Video Upscaling GUI for VapourSynth</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0</project_license>
+  <project_license>GPL-3.0-or-later</project_license>
   <description>
     <p>
       VapourKit is an advanced graphical interface for VapourSynth-powered
-      AI video upscaling and processing. It supports ONNX Runtime (CPU)
-      and TensorRT backends for model inference, with an extensible
-      filter chain system.
+      AI video upscaling and processing. It supports ONNX Runtime (CPU/CUDA)
+      and TensorRT backends for model inference when the corresponding
+      VapourSynth plugins are available, with an extensible filter chain system.
     </p>
     <p>Features:</p>
     <ul>
@@ -21,14 +21,22 @@
       <li>Segment preview and live output monitoring</li>
       <li>Configurable FFmpeg encoding settings</li>
     </ul>
+    <p>
+      Linux builds use native VapourSynth, FFmpeg, Python, BestSource, and
+      vs-mlrt plugins. Backend availability is detected at runtime.
+    </p>
   </description>
   <launchable type="desktop-id">com.aivideoupscaler.gui.desktop</launchable>
   <url type="homepage">https://github.com/Kim2091/VapourKit</url>
   <screenshots>
     <screenshot type="default">
       <caption>VapourKit main interface</caption>
+      <image>https://raw.githubusercontent.com/Kim2091/VapourKit/main/screenshots/main-interface.png</image>
     </screenshot>
   </screenshots>
+  <releases>
+    <release version="0.16.1" date="2026-05-28"/>
+  </releases>
   <provides>
     <binary>vapourkit</binary>
   </provides>

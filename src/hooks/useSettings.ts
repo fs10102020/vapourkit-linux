@@ -1,61 +1,106 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { InferenceBackend } from '../electron.d';
+import type { InferenceBackend, BackendCapabilities } from '../electron.d';
 
-export const useSettings = (hasCudaSupport: boolean | null, isWindows: boolean) => {
-  const [backend, setBackend] = useState<InferenceBackend>(() => {
-    // Try new key first
+export function getDefaultBackend(caps: BackendCapabilities | null | undefined): InferenceBackend {
+  if (caps?.recommendedBackend) {
+    return caps.recommendedBackend;
+  }
+  // Fallback when capabilities are not yet loaded
+  const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform);
+  return isWindows ? 'directml' : 'onnxruntime-cpu';
+}
+
+function isInferenceBackend(value: unknown): value is InferenceBackend {
+  return value === 'directml' ||
+    value === 'tensorrt' ||
+    value === 'onnxruntime-cuda' ||
+    value === 'onnxruntime-cpu';
+}
+
+export function validateBackend(
+  raw: unknown,
+  caps: BackendCapabilities | null | undefined
+): InferenceBackend {
+  if (isInferenceBackend(raw) && caps?.supportedBackends?.includes(raw)) {
+    return raw;
+  }
+  if (!caps && isInferenceBackend(raw)) {
+    return raw;
+  }
+  return getDefaultBackend(caps);
+}
+
+export const useSettings = (backendCapabilities?: BackendCapabilities | null) => {
+  const [backendState, setBackendState] = useState<InferenceBackend>(() => {
     const saved = localStorage.getItem('inferenceBackend');
     if (saved) {
-      try { return JSON.parse(saved) as InferenceBackend; } catch {}
+      try {
+        return validateBackend(JSON.parse(saved), null); // validate against caps once they load
+      } catch {
+        // corrupt JSON, fall through
+      }
     }
-    // Migrate old useDirectML key
     const oldDml = localStorage.getItem('useDirectML');
     if (oldDml !== null) {
-      const useDirectML = JSON.parse(oldDml);
-      if (useDirectML) {
-        return isWindows ? 'directml' : 'onnxruntime-cpu';
+      try {
+        const useDirectML = JSON.parse(oldDml);
+        if (useDirectML) {
+          return validateBackend('directml', null);
+        }
+        return validateBackend('tensorrt', null);
+      } catch {
+        // ignore
       }
-      return 'tensorrt';
     }
-    // Default
-    if (isWindows) {
-      return hasCudaSupport ? 'tensorrt' : 'directml';
-    }
-    return hasCudaSupport ? 'tensorrt' : 'onnxruntime-cpu';
+    return getDefaultBackend(null);
   });
 
   const [numStreams, setNumStreams] = useState(() => {
     const saved = localStorage.getItem('numStreams');
     if (saved !== null) {
-      return parseInt(saved, 10);
+      const parsed = parseInt(saved, 10);
+      return isNaN(parsed) ? 2 : parsed;
     }
     return 2;
   });
 
+  // Re-validate backend whenever capabilities are known / change
   useEffect(() => {
-    if (hasCudaSupport !== null) {
+    if (backendCapabilities) {
       const saved = localStorage.getItem('inferenceBackend');
-      if (saved === null) {
-        const defaultBackend: InferenceBackend = isWindows
-          ? (hasCudaSupport ? 'tensorrt' : 'directml')
-          : (hasCudaSupport ? 'tensorrt' : 'onnxruntime-cpu');
-        setBackend(defaultBackend);
-        localStorage.setItem('inferenceBackend', JSON.stringify(defaultBackend));
+      if (saved !== null) {
+        try {
+          const parsed = JSON.parse(saved) as InferenceBackend;
+          const valid = validateBackend(parsed, backendCapabilities);
+          if (valid !== parsed) {
+            setBackendState(valid);
+            localStorage.setItem('inferenceBackend', JSON.stringify(valid));
+          } else {
+            setBackendState(valid);
+          }
+          return;
+        } catch {
+          // corrupt saved value
+        }
       }
+      // No saved value or corrupt: default to recommended
+      const defaultBackend = getDefaultBackend(backendCapabilities);
+      setBackendState(defaultBackend);
+      localStorage.setItem('inferenceBackend', JSON.stringify(defaultBackend));
     }
-  }, [hasCudaSupport, isWindows]);
+  }, [backendCapabilities]);
 
   useEffect(() => {
-    localStorage.setItem('inferenceBackend', JSON.stringify(backend));
+    localStorage.setItem('inferenceBackend', JSON.stringify(backendState));
     localStorage.removeItem('useDirectML');
-  }, [backend]);
+  }, [backendState]);
 
   useEffect(() => {
     localStorage.setItem('numStreams', numStreams.toString());
   }, [numStreams]);
 
   const setBackendAndPersist = useCallback((value: InferenceBackend): void => {
-    setBackend(value);
+    setBackendState(value);
   }, []);
 
   const updateNumStreams = useCallback((value: number): void => {
@@ -63,7 +108,7 @@ export const useSettings = (hasCudaSupport: boolean | null, isWindows: boolean) 
   }, []);
 
   return {
-    backend,
+    backend: backendState,
     setBackend: setBackendAndPersist,
     numStreams,
     updateNumStreams,

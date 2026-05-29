@@ -37,6 +37,7 @@ export function registerWorkflowHandlers() {
       // Add encoding settings if provided
       if (workflow.encodingSettings) {
         tomlData.encoding_settings = {
+          backend: workflow.encodingSettings.backend,
           ffmpeg_args: workflow.encodingSettings.ffmpegArgs,
           processing_format: workflow.encodingSettings.processingFormat,
           output_format: workflow.encodingSettings.outputFormat,
@@ -110,6 +111,7 @@ export function registerWorkflowHandlers() {
       // Parse encoding settings if present
       if (data.encoding_settings) {
         workflow.encodingSettings = {
+          backend: data.encoding_settings.backend,
           ffmpegArgs: data.encoding_settings.ffmpeg_args,
           processingFormat: data.encoding_settings.processing_format,
           outputFormat: data.encoding_settings.output_format,

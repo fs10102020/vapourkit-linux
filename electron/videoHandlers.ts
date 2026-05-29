@@ -18,6 +18,7 @@ import { FFmpegSettingsManager } from './ffmpegSettingsManager';
 import { FFmpegManager } from './ffmpegManager';
 import { VsViewManager } from './vsViewManager';
 import { QueueItemLogger } from './queueItemLogger';
+import { executableExists, isLinux } from './platform';
 
 let upscaleExecutor: UpscaleExecutor | null = null;
 let previewExecutor: UpscaleExecutor | null = null;
@@ -279,7 +280,7 @@ export function registerVideoHandlers(
       qlog(`Upscaling: ${isUpscaling ? 'enabled' : 'disabled'}`);
       if (isUpscaling && modelPath) {
         qlog(`Model: ${modelPath}`);
-        qlog(`Backend: ${backend || 'tensorrt'}`);
+        qlog(`Backend: ${backend || (isLinux ? 'onnxruntime-cpu' : 'tensorrt')}`);
       }
       qlog(`Output: ${benchmarkMode ? '(benchmark - null output)' : outputPath}`);
       if (benchmarkMode) qlog('BENCHMARK MODE: Output will be discarded');
@@ -426,7 +427,7 @@ export function registerVideoHandlers(
       const { spawn } = require('child_process');
       
       // Check if video-compare exists
-      if (!fs.existsSync(PATHS.VIDEO_COMPARE_EXE)) {
+      if (!executableExists(PATHS.VIDEO_COMPARE_EXE)) {
         throw new Error('Video comparison tool not found. Please run setup again.');
       }
       
@@ -486,7 +487,7 @@ export function registerVideoHandlers(
         inputVideo: videoPath,
         enginePath: PATHS.MLRT_PLUGIN,
         pluginsPath: PATHS.PLUGINS,
-        backend: backend || 'tensorrt',
+        backend: backend || (isLinux ? 'onnxruntime-cpu' : 'tensorrt'),
         useFp32: modelPath ? configManager.isModelFp32(modelPath) : false,
         modelType: modelPath ? configManager.getModelType(modelPath) : 'image' as const,
         upscalingEnabled: upscalingEnabled || false,
@@ -844,7 +845,7 @@ function createScriptConfig(
     inputVideo: videoPath,
     enginePath: modelPath || '',
     pluginsPath: dependencyManager.getPluginsPath(),
-    backend: backend || 'tensorrt',
+    backend: backend || (isLinux ? 'onnxruntime-cpu' : 'tensorrt'),
     useFp32: useFp32,
     modelType: modelType,
     upscalingEnabled: isUpscaling,

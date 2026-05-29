@@ -4,7 +4,7 @@ import * as fs from 'fs-extra';
 import { logger } from './logger';
 import { PATHS } from './constants';
 import { getBundledBasePath } from './utils';
-import { forceKillProcess } from './platform';
+import { forceKillProcess, executableExists } from './platform';
 
 export class ModelExtractor {
   private bundledModelsPath: string;
@@ -165,7 +165,7 @@ export class ModelExtractor {
     
     try {
       // Check if trtexec exists
-      if (!await fs.pathExists(PATHS.TRTEXEC)) {
+      if (!executableExists(PATHS.TRTEXEC)) {
         const error = `trtexec not found at: ${PATHS.TRTEXEC}`;
         logger.error(error);
         throw new Error(error);

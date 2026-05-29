@@ -13,7 +13,6 @@ interface HeaderProps {
   onPluginsClick: () => void;
   onReloadBackend: () => void;
   onAboutClick: () => void;
-  onSetBackend: (backend: InferenceBackend) => void;
   onLoadWorkflow?: () => void;
   onImportWorkflow?: () => void;
   onExportWorkflow?: () => void;
@@ -36,7 +35,6 @@ export const Header = memo<HeaderProps>(({
   onPluginsClick,
   onReloadBackend,
   onAboutClick,
-  onSetBackend,
   onLoadWorkflow,
   onImportWorkflow,
   onExportWorkflow,
@@ -88,9 +86,9 @@ export const Header = memo<HeaderProps>(({
             <span className="text-xs">Plugins</span>
           </button>
           <button
-            onClick={() => onSetBackend(backend)}
+            onClick={onSettingsClick}
             className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-dark-surface rounded-lg flex flex-col items-center gap-0.5 min-w-[70px]"
-            title={`Currently using ${BACKEND_SHORT_LABELS[backend]} - Click to switch backend`}
+            title={`Currently using ${BACKEND_SHORT_LABELS[backend]} - Open Settings to change backend`}
           >
             <Cpu className="w-5 h-5" />
             <span className="text-xs text-accent-cyan font-semibold">{BACKEND_SHORT_LABELS[backend]}</span>

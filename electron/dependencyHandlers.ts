@@ -5,7 +5,7 @@ import { detectCudaSupport, pollGpuStats } from './utils';
 import { createIpcHandler } from './ipcUtilities';
 import { DependencyManager } from './dependencyManager';
 import { PluginInstaller } from './pluginInstaller';
-import { isWindows, isLinux } from './platform';
+import { getRuntimeCapabilities } from './backendUtils';
 
 /**
  * Registers all dependency and plugin-related IPC handlers
@@ -38,35 +38,17 @@ export function registerDependencyHandlers(
     createIpcHandler(
       'get-backend-capabilities',
       async () => {
-        const hasCuda = await detectCudaSupport();
-        const directmlAvailable = isWindows;
-        const tensorrtAvailable = hasCuda;
-        const onnxRuntimeCudaAvailable = hasCuda;
-        const onnxRuntimeCpuAvailable = true;
-
-        const supportedBackends: string[] = [];
-        if (directmlAvailable) supportedBackends.push('directml');
-        if (tensorrtAvailable) supportedBackends.push('tensorrt');
-        if (onnxRuntimeCudaAvailable) supportedBackends.push('onnxruntime-cuda');
-        if (onnxRuntimeCpuAvailable) supportedBackends.push('onnxruntime-cpu');
-
-        let recommendedBackend: string;
-        if (isWindows) {
-          recommendedBackend = hasCuda ? 'tensorrt' : 'directml';
-        } else {
-          recommendedBackend = hasCuda ? 'tensorrt' : 'onnxruntime-cpu';
-        }
-
+        const caps = await getRuntimeCapabilities();
         return {
           platform: process.platform,
-          cudaAvailable: hasCuda,
-          nvidiaGpuAvailable: hasCuda,
-          directmlAvailable,
-          tensorrtAvailable,
-          onnxRuntimeCudaAvailable,
-          onnxRuntimeCpuAvailable,
-          supportedBackends,
-          recommendedBackend,
+          cudaAvailable: caps.cudaAvailable,
+          nvidiaGpuAvailable: caps.nvidiaGpuAvailable,
+          directmlAvailable: caps.directmlAvailable,
+          tensorrtAvailable: caps.tensorrtRuntimeAvailable && caps.tensorrtBuilderAvailable,
+          onnxRuntimeCudaAvailable: caps.onnxRuntimeCudaAvailable,
+          onnxRuntimeCpuAvailable: caps.onnxRuntimeCpuAvailable,
+          supportedBackends: caps.supportedBackends,
+          recommendedBackend: caps.recommendedBackend,
         };
       },
       { logResult: true }
@@ -167,10 +149,10 @@ export function registerDependencyHandlers(
   });
 
   ipcMain.handle('check-dependency-status', async () => {
-    logger.info('Checking dependency status');
+    logger.info('Checking dependency status (read-only)');
     try {
       const { DependencyResolver } = await import('./dependencyResolver');
-      return await DependencyResolver.resolveAll();
+      return await DependencyResolver.resolveAllReadOnly();
     } catch (error) {
       logger.error('Error checking dependency status:', error);
       return [];

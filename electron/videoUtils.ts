@@ -4,7 +4,8 @@ import { PATHS } from './constants';
 import { spawn } from 'child_process';
 import { setupVSEnvironment } from './utils';
 import { parseBestSourceProgress } from './bestSourceProgressParser';
-import { libName } from './platform';
+import { libName, executableExists } from './platform';
+import { getVapourSynthCwd } from './linuxRuntime';
 import * as path from 'path';
 import * as fs from 'fs-extra';
 import * as os from 'os';
@@ -166,18 +167,20 @@ export async function getVideoFrameCount(
   onProgress?: (percentage: number) => void
 ): Promise<number | undefined> {
   try {
-    if (!fs.existsSync(PATHS.VSPIPE)) {
+    if (!executableExists(PATHS.VSPIPE)) {
       logger.warn('VapourSynth vspipe not available for frame count extraction');
       return undefined;
     }
 
-    if (!fs.existsSync(PATHS.PYTHON)) {
+    if (!executableExists(PATHS.PYTHON)) {
       logger.warn('VapourSynth Python not available for frame count extraction');
       return undefined;
     }
 
     const bestSourcePath = path.join(PATHS.PLUGINS, libName('bestsource'));
-    if (!fs.existsSync(bestSourcePath)) {
+    // On Linux, BestSource is a system VapourSynth plugin installed alongside vspipe
+    const bestSourceAvailable = fs.existsSync(bestSourcePath) || executableExists(PATHS.VSPIPE);
+    if (!bestSourceAvailable) {
       logger.warn('BestSource plugin not available for frame count extraction');
       return undefined;
     }
@@ -205,7 +208,7 @@ clip.set_output()
       const vspipe = spawn(PATHS.VSPIPE, ['-i', scriptPath, '-'], {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: env,
-        cwd: PATHS.VS
+        cwd: getVapourSynthCwd(),
       });
 
       let output = '';

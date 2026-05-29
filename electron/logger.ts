@@ -4,22 +4,22 @@ import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
+import { resolveAppDataPath } from './platform';
 
 /**
  * Centralized logging utility for the application
  * Logs are stored in portable mode:
  * - Development: <project>/data/logs/main.log
  * - Production: <exe-directory>/data/logs/main.log
- * 
+ * - Linux (Flatpak/AppImage/native): XDG userData/logs/main.log
+ *
  * Log rotation:
  * - On startup, if main.log exceeds 15,000 lines, it's rotated to main_YYYY-MM-DDTHH-MM-SS.log
  * - A fresh main.log is then created for the new session
  */
 
 // Configure log file location (portable)
-const appDataPath = app.isPackaged 
-  ? path.join(path.dirname(app.getPath('exe')), 'data')
-  : path.join(app.getAppPath(), 'data');
+const appDataPath = resolveAppDataPath();
 const logPath = path.join(appDataPath, 'logs', 'main.log');
 
 // Log rotation state - will be updated asynchronously
