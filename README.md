@@ -25,12 +25,12 @@ Linux support uses system VapourSynth, Python, FFmpeg, and VapourSynth plugins i
 Required runtime tools:
 - `ffmpeg` and `ffprobe`
 - `python3` and `python3-venv`
-- `vspipe` from VapourSynth R77 or newer
+- `vspipe` from VapourSynth R76 or newer
 - BestSource VapourSynth plugin (`core.bs`)
 - vs-mlrt ONNX Runtime plugin (`core.ort`) for ONNX Runtime CPU/CUDA backends
 - Optional: vs-mlrt TensorRT plugin (`core.trt`) and `trtexec` for TensorRT
 
-Important Linux note: upstream vs-mlrt does not currently publish pre-built Linux binaries. Install vs-mlrt through your distribution, place plugin `.so` files in a VapourSynth plugin search path, or build it from source. Vapourkit detects backend support at runtime and only exposes loadable backends.
+Important Linux note: upstream vs-mlrt does not publish pre-built Linux binaries. On first setup, VapourKit attempts to **automatically compile the vs-mlrt ONNX Runtime plugin from source** when `cmake`, `ninja`, `git`, `gcc`, and `g++` are available. If the automatic build is not possible, install the plugin through your distribution, place `.so` files in a VapourSynth plugin search path, or build it manually. VapourKit detects backend support at runtime and only exposes loadable backends.
 
 ### Quick Start
 1. Select or drag-and-drop a video file

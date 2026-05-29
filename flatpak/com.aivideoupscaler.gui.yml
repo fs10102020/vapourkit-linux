@@ -64,7 +64,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/vapoursynth/vapoursynth.git
-        tag: R77
+        tag: R76
 
   - name: bestsource
     build-options:
@@ -77,13 +77,82 @@ modules:
         url: https://github.com/vapoursynth/bestsource.git
         tag: R13
 
-  # NOTE: vs-mlrt upstream does not provide Linux pre-built binaries.
-  # The ONNX Runtime (vsort) and TensorRT (vstrt) plugins must be built
-  # from source or installed via the host distribution. Until upstream
-  # publishes Linux releases, this manifest leaves the plugins un-bundled.
-  # See: https://github.com/AmusementClub/vs-mlrt/releases
-  # Flatpak users can place .so files into ~/.local/lib/vapoursynth or
-  # the app can be extended with a Flatpak extension module.
+  # vs-mlrt ONNX Runtime plugin (vsort) — built from source because upstream
+  # does not publish Linux binaries. TensorRT (vstrt) is omitted; users who
+  # need it can install it manually or extend the Flatpak.
+  - name: vs-mlrt-onnxruntime
+    buildsystem: simple
+    build-options:
+      env:
+        VS_MLRT_VERSION: "15.13"
+        ONNX_RUNTIME_VERSION: "1.17.1"
+        PROTOBUF_VERSION: "3.21.12"
+        ONNX_COMMIT: "b86cc54efce19530fb953e4b21f57e6b3888534c"
+    build-commands:
+      # 1. Build protobuf
+      - cmake -S protobuf/cmake -B protobuf/build -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -Dprotobuf_BUILD_SHARED_LIBS=OFF
+        -Dprotobuf_BUILD_TESTS=OFF
+        -DCMAKE_INSTALL_PREFIX=/app/build-deps/protobuf
+      - cmake --build protobuf/build --parallel
+      - cmake --install protobuf/build --prefix /app/build-deps/protobuf
+
+      # 2. Build ONNX
+      - cmake -S onnx -B onnx/build -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DProtobuf_PROTOC_EXECUTABLE=/app/build-deps/protobuf/bin/protoc
+        -DProtobuf_LITE_LIBRARY=/app/build-deps/protobuf/lib
+        -DProtobuf_LIBRARIES=/app/build-deps/protobuf/lib
+        -DONNX_USE_LITE_PROTO=ON
+        -DONNX_USE_PROTOBUF_SHARED_LIBS=OFF
+        -DONNX_GEN_PB_TYPE_STUBS=OFF
+        -DONNX_ML=0
+        -DCMAKE_INSTALL_PREFIX=/app/build-deps/onnx
+      - cmake --build onnx/build --parallel
+      - cmake --install onnx/build --prefix /app/build-deps/onnx
+
+      # 3. Extract ONNX Runtime binaries
+      - tar -xf onnxruntime-linux-x64-${ONNX_RUNTIME_VERSION}.tgz
+      - mv onnxruntime-linux-x64-${ONNX_RUNTIME_VERSION} /app/build-deps/onnxruntime
+
+      # 4. Build vsort
+      - cmake -S vs-mlrt/vsort -B vs-mlrt/vsort/build -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_CXX_FLAGS="-Wall -ffast-math -march=x86-64-v3"
+        -DVAPOURSYNTH_INCLUDE_DIRECTORY=/app/include/vapoursynth
+        -DONNX_RUNTIME_API_DIRECTORY=/app/build-deps/onnxruntime/include
+        -DONNX_RUNTIME_LIB_DIRECTORY=/app/build-deps/onnxruntime/lib
+        -Dprotobuf_DIR=/app/build-deps/protobuf/lib/cmake/protobuf
+        -DONNX_DIR=/app/build-deps/onnx/lib/cmake/ONNX
+        -DCMAKE_CXX_STANDARD=20
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DCMAKE_INSTALL_PREFIX=/app/build-deps/vsort
+      - cmake --build vs-mlrt/vsort/build --parallel
+      - cmake --install vs-mlrt/vsort/build --prefix /app/build-deps/vsort
+
+      # 5. Install the plugin into the VapourSynth plugin directory
+      - install -Dm644 /app/build-deps/vsort/lib/libvsort.so /app/lib/vapoursynth/libvsort.so
+      - install -Dm644 /app/build-deps/onnxruntime/lib/libonnxruntime.so* /app/lib/
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        tag: v3.21.12
+        dest: protobuf
+      - type: git
+        url: https://github.com/onnx/onnx.git
+        commit: b86cc54efce19530fb953e4b21f57e6b3888534c
+        dest: onnx
+      - type: archive
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-linux-x64-1.17.1.tgz
+        sha256: 4cabb468816902bc44eb8e28873ff44bfacfab7fb7b8a9e89d8f9a5fb13f6c00
+        dest-filename: onnxruntime-linux-x64-1.17.1.tgz
+      - type: git
+        url: https://github.com/AmusementClub/vs-mlrt.git
+        tag: v15.13
+        dest: vs-mlrt
 
   - name: video-compare
     buildsystem: simple
@@ -100,7 +169,7 @@ modules:
     build-commands:
       - python3 -m venv --copies /app/python-venv
       - /app/python-venv/bin/pip install --no-cache-dir setuptools wheel pip --upgrade
-      - /app/python-venv/bin/pip install --no-cache-dir vapoursynth==77 vsjetpack==1.1.0 vsview==0.5.0
+      - /app/python-venv/bin/pip install --no-cache-dir vapoursynth==76 vsjetpack==1.1.0 vsview==0.5.0
     sources: []
 
   - name: vapourkit

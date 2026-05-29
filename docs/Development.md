@@ -11,12 +11,12 @@ Windows development uses the same download-based setup flow as production. The a
 Linux development uses native system tools and a Python virtual environment in `data/python-venv`:
 - `python3` and `python3-venv`
 - `ffmpeg` and `ffprobe`
-- `vspipe` from VapourSynth R77 or newer
+- `vspipe` from VapourSynth R76 or newer
 - BestSource plugin loadable as `core.bs`
 - vs-mlrt ONNX Runtime plugin loadable as `core.ort`
 - Optional TensorRT support: `core.trt` plus `trtexec`
 
-The Linux setup flow verifies these with read-only probes. It does not download vs-mlrt because upstream does not provide Linux binary releases.
+The Linux setup flow verifies these with read-only probes. When the vs-mlrt ONNX Runtime plugin is missing and a build environment (`cmake`, `ninja`, `git`, `gcc`, `g++`) is detected, the app attempts to compile the plugin from source automatically. This caches protobuf and ONNX locally so repeated setups are fast. TensorRT remains optional and is never auto-built.
 
 ## Setup
 ```bash
@@ -69,7 +69,7 @@ npm run build:deb
 npm run build:rpm
 ```
 
-Linux deb/rpm packages declare dependencies on `ffmpeg`, `vapoursynth (>= 77)`, `python3`, and `python3-venv`. vs-mlrt plugins are still expected to be provided by the system/user because no upstream Linux binaries are published.
+Linux deb/rpm packages declare dependencies on `ffmpeg`, `vapoursynth (>= 76)`, `python3`, and `python3-venv`. vs-mlrt plugins are expected to be provided by the system/user, or the app can auto-build the ONNX Runtime plugin when build tools are present.
 
 ## Flatpak Packaging
 Flatpak files live in `flatpak/`:
@@ -77,7 +77,7 @@ Flatpak files live in `flatpak/`:
 - `flatpak/vapourkit.sh` sets the Flatpak runtime environment and launches Electron.
 - `generated-sources.json` contains npm source metadata generated from `package-lock.json` for offline Flatpak builds.
 
-The Flatpak manifest builds FFmpeg, VapourSynth, BestSource, video-compare, and a Python venv. It does not bundle vs-mlrt Linux plugins; users or packagers must provide loadable `core.ort`/`core.trt` plugins separately until upstream publishes Linux builds or a source-build module is added.
+The Flatpak manifest builds FFmpeg, VapourSynth, BestSource, video-compare, and a Python venv. It also builds the vs-mlrt ONNX Runtime plugin (`vsort`) from source inside the Flatpak so the app is functional out-of-the-box. TensorRT (`vstrt`) is not bundled; users who need it can install it manually or extend the Flatpak.
 
 Regenerate npm Flatpak sources after changing `package-lock.json`:
 

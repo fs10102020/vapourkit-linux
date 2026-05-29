@@ -482,12 +482,50 @@ export class DependencyManager {
         }
 
         // NOTE: vs-mlrt upstream does not provide Linux pre-built binaries.
-        // On Linux we can only check whether the plugins are already present
-        // (system, user home, Flatpak, or distro package). If they are missing,
-        // the post-setup runtime probe will fail with a clear message.
+        // If the plugins are missing, attempt to build vsort from source when
+        // the build environment is available. TensorRT remains optional.
         const ortInstalled = await VsMlrtManager.isComponentInstalled('onnx-runtime');
         if (!ortInstalled) {
-          logger.warn('vs-mlrt ONNX Runtime plugin (vsort) not found on Linux. Install it through your distribution or build from source: https://github.com/AmusementClub/vs-mlrt');
+          logger.dependency('vs-mlrt ONNX Runtime plugin (vsort) not found — attempting source build');
+          this.sendProgress({ type: 'download', component: 'vs-mlrt', progress: 0, message: 'ONNX Runtime plugin missing — attempting to build from source...' });
+
+          const { VsMlrtLinuxBuilder } = await import('./vsMlrtLinuxBuilder');
+          const buildTools = await VsMlrtLinuxBuilder.detectBuildTools();
+
+          if (VsMlrtLinuxBuilder.isBuildEnvironmentReady(buildTools)) {
+            try {
+              const builder = new VsMlrtLinuxBuilder();
+              await builder.buildAndInstall((progress) => {
+                this.sendProgress({
+                  type: 'download',
+                  component: 'vs-mlrt ONNX Runtime',
+                  progress: progress.progress,
+                  message: progress.message,
+                });
+              });
+              logger.dependency('vs-mlrt ONNX Runtime plugin built and installed from source');
+            } catch (buildError: any) {
+              logger.error('Failed to build vs-mlrt ONNX Runtime plugin from source:', buildError);
+              this.sendProgress({
+                type: 'error',
+                component: 'vs-mlrt ONNX Runtime',
+                progress: 0,
+                message: `Build failed: ${buildError.message || 'unknown error'}`,
+              });
+              // Don't throw here — let the post-setup probe produce the final error
+              // so the user sees a consistent "plugin not loadable" message.
+            }
+          } else {
+            const missing = buildTools.filter(t => !t.found).map(t => t.name);
+            const guide = VsMlrtLinuxBuilder.getBuildToolGuide(missing);
+            logger.warn(`Cannot build vs-mlrt automatically. ${guide}`);
+            this.sendProgress({
+              type: 'error',
+              component: 'vs-mlrt ONNX Runtime',
+              progress: 0,
+              message: `Build tools missing: ${missing.join(', ')}. Install them to enable automatic compilation, or install the plugin manually.`,
+            });
+          }
         } else {
           logger.dependency('vs-mlrt ONNX Runtime plugin detected');
         }

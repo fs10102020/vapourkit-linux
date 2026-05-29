@@ -83,7 +83,7 @@ To access bundled files (`include/`), always use `getBundledBasePath()` from `el
 
 1. `dependencyManager.setupDependencies()` checks the platform.
 2. Windows downloads core deps (VapourSynth R72, Python 3.13, vs-mlrt, FFmpeg, video-compare, BestSource), then `pluginInstaller.installDependenciesForSetup()` pip-installs packages and extracts plugins/scripts/filters. Plugin install auto-retries once on failure.
-3. Linux uses native/system dependencies: Python, venv, pip packages, FFmpeg, VapourSynth, BestSource, and vs-mlrt plugins are detected/probed. Linux setup fails hard for Python/venv/pip/FFmpeg/VapourSynth/BestSource/ONNX Runtime plugin failures.
+3. Linux uses native/system dependencies: Python, venv, pip packages, FFmpeg, VapourSynth, BestSource, and vs-mlrt plugins are detected/probed. If the vs-mlrt ONNX Runtime plugin is missing, the app attempts to build it from source when the build environment is available. Linux setup fails hard for Python/venv/pip/FFmpeg/VapourSynth/BestSource/ONNX Runtime plugin failures.
 4. Setup completion signaled via IPC event `'setup-progress'` with `component: 'All Dependencies'`.
 
 File locking during 7z extraction is retried 5 times with 2s delay.
@@ -132,7 +132,7 @@ Queue stored as JSON at the app config path (`data/config/queue.json` in develop
 
 Version pinned in `electron/constants.ts:5` (`VS_MLRT_VERSION = '15.13'`). Stored in config. On version mismatch with existing `.engine` files, user is notified via modal to rebuild. Version is NOT auto-updated during setup — only after user acknowledges or clears engines.
 
-Upstream vs-mlrt currently publishes Windows binary releases only. Linux builds must use distro/user/Flatpak-provided `.so` plugins or a future source-build module; do not add fake Linux binary download URLs.
+Upstream vs-mlrt currently publishes Windows binary releases only. On Linux, the app attempts to auto-build the ONNX Runtime plugin (`vsort.so`) from source when `cmake`, `ninja`, `git`, `gcc`, and `g++` are available (`electron/vsMlrtLinuxBuilder.ts`). The build caches protobuf and ONNX locally under `<appData>/build-cache/`. The Flatpak manifest includes a `vs-mlrt-onnxruntime` module that performs the same build at Flatpak build time. TensorRT (`vstrt.so`) is not auto-built and remains optional.
 
 ## GPU monitoring
 
@@ -147,7 +147,7 @@ Filter order is top-to-bottom. Undo/redo via `useFilterHistory` hook with Ctrl+Z
 Five repos live alongside this one and are downstream runtime dependencies (downloaded/extracted/invoked at runtime on Windows; system/Flatpak-provided on Linux where applicable):
 
 - **vapoursynth** — `vspipe.exe` + `python.exe` downloaded during Windows setup; Linux uses system/Flatpak `vspipe`
-- **vs-mlrt** — TensorRT (`trtexec.exe`/`core.trt`) + ONNX Runtime (`vsort.dll`/`core.ort`); Windows downloads binaries, Linux must provide plugins separately
+- **vs-mlrt** — TensorRT (`trtexec.exe`/`core.trt`) + ONNX Runtime (`vsort.dll`/`core.ort`); Windows downloads binaries, Linux auto-builds the ONNX Runtime plugin from source when build tools are present
 - **vs-jetpack** — pip-installed (`vsjetpack==1.1.0`), imported by filter `.vkfilter` scripts
 - **video-compare** — downloaded on Windows, built/provided by Linux packages/Flatpak, launched as detached process
 - **Upscale-Hub** — source of pre-bundled ONNX models (files live in `include/models/`, metadata in `stock-app-config.json`)

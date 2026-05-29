@@ -145,7 +145,7 @@
             "artifactName": "Vapourkit-${version}-${arch}.${ext}",
             "depends": [
                 "ffmpeg",
-                "vapoursynth (>= 77)",
+                "vapoursynth (>= 76)",
                 "python3",
                 "python3-venv"
             ]

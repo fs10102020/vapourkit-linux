@@ -197,6 +197,29 @@ export class DependencyResolver {
     };
   }
 
+  /**
+   * Detects build tools required to compile vs-mlrt from source on Linux.
+   * Returns a status entry for each tool so the UI can show what is missing.
+   */
+  static async resolveBuildTools(): Promise<DependencyStatus[]> {
+    if (isWindows) {
+      return [];
+    }
+
+    const { VsMlrtLinuxBuilder } = await import('./vsMlrtLinuxBuilder');
+    const tools = await VsMlrtLinuxBuilder.detectBuildTools();
+
+    return tools.map(t => ({
+      component: `build-tool-${t.name}`,
+      name: t.name,
+      installed: t.found,
+      path: t.path,
+      guide: t.found
+        ? undefined
+        : `Install ${t.name} to enable automatic vs-mlrt compilation.\n${VsMlrtLinuxBuilder.getBuildToolGuide([t.name])}`,
+    }));
+  }
+
   static async resolveAll(): Promise<DependencyStatus[]> {
     const results: DependencyStatus[] = [];
 
@@ -217,6 +240,11 @@ export class DependencyResolver {
 
     results.push(await DependencyResolver.resolveVapourSynth());
     results.push(await DependencyResolver.resolveVideoCompare());
+
+    if (isLinux) {
+      const buildToolResults = await DependencyResolver.resolveBuildTools();
+      results.push(...buildToolResults);
+    }
 
     return results;
   }
@@ -243,6 +271,11 @@ export class DependencyResolver {
 
     results.push(await DependencyResolver.resolveVapourSynth());
     results.push(await DependencyResolver.resolveVideoCompare());
+
+    if (isLinux) {
+      const buildToolResults = await DependencyResolver.resolveBuildTools();
+      results.push(...buildToolResults);
+    }
 
     return results;
   }
