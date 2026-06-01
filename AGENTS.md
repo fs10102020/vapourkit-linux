@@ -12,7 +12,8 @@ npm run dev              # build:electron, then Vite + Electron concurrently
 npm run build            # renderer tsc + Vite build + electron tsc
 npm test                 # Vitest for src/**/*.test.ts
 npm run test:electron    # Vitest for electron/**/*.test.ts
-npm run build:linux      # electron-builder --linux --x64
+npm run build:linux      # AppImage + deb + rpm via electron-builder --linux --x64
+npm run build:linux:all  # alias for build:linux
 npm run build:linux:dir  # unpacked Linux dir build
 npm run update-docs      # regenerate docs/Models.md from src/data/modelLicenses.ts
 ```
@@ -50,6 +51,7 @@ npm run update-docs      # regenerate docs/Models.md from src/data/modelLicenses
 - `dependencyManager.setupDependencies()` is platform-split.
 - Windows downloads portable VapourSynth R72, Python 3.13, vs-mlrt, FFmpeg, video-compare, then pip-installs/extracts plugins.
 - Linux probes system tools, creates a copy-based venv, pip-installs packages, optionally builds `video-compare`, builds `vsort.so` if `core.ort` is missing, and can build `vstrt.so` when CUDA plus TensorRT SDK dev files are present.
+- Linux `video-compare` source build is optional and requires `git`, `make`, `gcc/g++`, `pkg-config`, FFmpeg dev headers, SDL2, and SDL2_ttf; missing inputs must not block core setup.
 - Linux setup fails on missing Python/venv/pip/FFmpeg/VapourSynth R76+/BestSource/ONNX Runtime.
 - `SetupScreen` matches setup steps by `componentPrefixes.some(prefix => component.startsWith(prefix))` because Windows/Linux emit different component names.
 
@@ -84,6 +86,7 @@ npm run update-docs      # regenerate docs/Models.md from src/data/modelLicenses
 - `electron` and `onnxruntime-node` tarballs are manually added to `generated-sources.json`; generator output alone is incomplete.
 - Manifest sets `ELECTRON_SKIP_BINARY_DOWNLOAD=1` and `ONNXRUNTIME_NODE_INSTALL=skip` to avoid networked postinstall downloads.
 - Flatpak vs-mlrt build uses `-march=x86-64`; keep the broad x86_64 baseline.
+- Flatpak manifest builds `vsort` and `video-compare`, but does not bundle TensorRT/`vstrt`.
 - Broad `--device=all` is intentional for experimental AMD/ROCm diagnostics, but CPU/ONNX is the default Linux path.
 
 ## Dev Environment Notes
