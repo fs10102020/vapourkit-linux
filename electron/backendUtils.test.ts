@@ -57,7 +57,7 @@ vi.mock('./platform', async () => {
   };
 });
 
-import { normalizeBackend, resolveModelPathForBackend } from './backendUtils';
+import { normalizeBackend, parseOnnxRuntimeVersionOutput, resolveModelPathForBackend } from './backendUtils';
 
 describe('normalizeBackend', () => {
   it('returns the backend when supported', () => {
@@ -92,5 +92,24 @@ describe('resolveModelPathForBackend', () => {
 
   it('derives onnx from engine for onnx backends', () => {
     expect(resolveModelPathForBackend('/models/a_fp16_fp16.engine', 'onnxruntime-cpu')).toBe('/models/a_fp16.onnx');
+  });
+});
+
+describe('parseOnnxRuntimeVersionOutput', () => {
+  it('extracts reported ONNX Runtime providers', () => {
+    const result = parseOnnxRuntimeVersionOutput(JSON.stringify({
+      providers: ['CUDA', 'CPU'],
+      onnxRuntimeVersion: '1.17.1',
+      pluginPath: '/plugins/vsort.so',
+    }));
+
+    expect(result.providers).toEqual(['CUDA', 'CPU']);
+    expect(result.onnxRuntimeVersion).toBe('1.17.1');
+    expect(result.pluginPath).toBe('/plugins/vsort.so');
+  });
+
+  it('ignores malformed provider entries', () => {
+    const result = parseOnnxRuntimeVersionOutput(JSON.stringify({ providers: ['CUDA', 1, null] }));
+    expect(result.providers).toEqual(['CUDA']);
   });
 });

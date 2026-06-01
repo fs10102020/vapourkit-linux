@@ -6,10 +6,10 @@ import * as fs from 'fs-extra';
 import * as https from 'https';
 import { logger } from './logger';
 import { PATHS } from './constants';
-import { isLinux } from './platform';
+import { isLinux, platformSpawnOptions } from './platform';
 import { configManager } from './configManager';
-import { getBundledBasePath } from './utils';
-import * as _7z from '7zip-min';
+import { getBundledBasePath, runCommandCapture } from './utils';
+import * as _7z from './sevenZip';
 
 export interface PluginDependencyProgress {
   type: 'installing' | 'complete' | 'error';
@@ -22,6 +22,69 @@ interface SetupProgressEvent {
   component: string;
   progress: number;
   message: string;
+}
+
+export interface PyTorchWheelTarget {
+  label: string;
+  indexUrl: string;
+  cudaVersion?: string;
+}
+
+const CPU_PYTORCH_WHEEL: PyTorchWheelTarget = {
+  label: 'CPU',
+  indexUrl: 'https://download.pytorch.org/whl/cpu',
+};
+
+const CUDA_PYTORCH_WHEELS: PyTorchWheelTarget[] = [
+  { label: 'CUDA 13.0', cudaVersion: '13.0', indexUrl: 'https://download.pytorch.org/whl/cu130' },
+  { label: 'CUDA 12.8', cudaVersion: '12.8', indexUrl: 'https://download.pytorch.org/whl/cu128' },
+  { label: 'CUDA 12.6', cudaVersion: '12.6', indexUrl: 'https://download.pytorch.org/whl/cu126' },
+  { label: 'CUDA 12.4', cudaVersion: '12.4', indexUrl: 'https://download.pytorch.org/whl/cu124' },
+  { label: 'CUDA 12.1', cudaVersion: '12.1', indexUrl: 'https://download.pytorch.org/whl/cu121' },
+  { label: 'CUDA 11.8', cudaVersion: '11.8', indexUrl: 'https://download.pytorch.org/whl/cu118' },
+];
+
+function parseVersion(version: string): number | null {
+  const match = version.match(/(\d+)\.(\d+)/);
+  if (!match) return null;
+  return Number(match[1]) * 100 + Number(match[2]);
+}
+
+export function selectPyTorchCudaWheel(cudaVersion: string | undefined): PyTorchWheelTarget | null {
+  if (!cudaVersion) return null;
+  const detected = parseVersion(cudaVersion);
+  if (detected === null) return null;
+  return CUDA_PYTORCH_WHEELS.find(wheel => {
+    const wheelVersion = parseVersion(wheel.cudaVersion || '');
+    return wheelVersion !== null && wheelVersion <= detected;
+  }) || null;
+}
+
+async function detectNvidiaCudaVersion(): Promise<string | undefined> {
+  const queried = await runNvidiaSmi(['--query-gpu=cuda_version', '--format=csv,noheader']);
+  const fromQuery = queried?.split(/\r?\n/).map(line => line.trim()).find(line => parseVersion(line) !== null);
+  if (fromQuery) return fromQuery;
+
+  const output = await runNvidiaSmi([]);
+  const match = output?.match(/CUDA Version:\s*(\d+\.\d+)/i);
+  return match?.[1];
+}
+
+function runNvidiaSmi(args: string[]): Promise<string | undefined> {
+  return runCommandCapture('nvidia-smi', args, 5000);
+}
+
+export async function resolvePyTorchWheelTarget(): Promise<PyTorchWheelTarget> {
+  const cudaVersion = await detectNvidiaCudaVersion();
+  const cudaWheel = selectPyTorchCudaWheel(cudaVersion);
+  if (cudaWheel) {
+    logger.info(`Detected NVIDIA CUDA ${cudaVersion}; using PyTorch ${cudaWheel.label} wheels`);
+    return cudaWheel;
+  }
+  logger.info(cudaVersion
+    ? `Detected NVIDIA CUDA ${cudaVersion}, but no compatible PyTorch wheel mapping is available; using CPU wheels`
+    : 'No NVIDIA CUDA runtime detected; using PyTorch CPU wheels');
+  return CPU_PYTORCH_WHEEL;
 }
 
 export class PluginInstaller {
@@ -63,7 +126,7 @@ export class PluginInstaller {
     return new Promise((resolve) => {
       this.installProcess = spawn(PATHS.PYTHON, args, {
         cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,
-        windowsHide: true
+        ...platformSpawnOptions(),
       });
 
       let errorBuffer = '';
@@ -260,20 +323,41 @@ export class PluginInstaller {
       }
 
       logger.info('=== Step 1: Installing PyTorch and torchvision ===');
+      const pytorchTarget = await resolvePyTorchWheelTarget();
       const pytorchResult = await this.runPipInstall(
         ['torch', 'torchvision'],
         5,
         65,
-        ['--index-url', 'https://download.pytorch.org/whl/cu130']
+        ['--index-url', pytorchTarget.indexUrl]
       );
 
       if (!pytorchResult.success) {
-        this.sendProgress({
-          type: 'error',
-          progress: 0,
-          message: pytorchResult.error || 'PyTorch installation failed'
-        });
-        return { success: false, error: pytorchResult.error };
+        if (pytorchTarget.cudaVersion) {
+          logger.warn(`PyTorch ${pytorchTarget.label} installation failed; retrying with CPU wheels`);
+          const cpuResult = await this.runPipInstall(
+            ['torch', 'torchvision'],
+            5,
+            65,
+            ['--index-url', CPU_PYTORCH_WHEEL.indexUrl]
+          );
+          if (cpuResult.success) {
+            logger.info('PyTorch CPU wheel fallback installed successfully');
+          } else {
+            this.sendProgress({
+              type: 'error',
+              progress: 0,
+              message: cpuResult.error || 'PyTorch installation failed'
+            });
+            return { success: false, error: cpuResult.error };
+          }
+        } else {
+          this.sendProgress({
+            type: 'error',
+            progress: 0,
+            message: pytorchResult.error || 'PyTorch installation failed'
+          });
+          return { success: false, error: pytorchResult.error };
+        }
       }
 
       if (this.isCancelled) {
@@ -302,8 +386,11 @@ export class PluginInstaller {
       }
 
       // Step 3: Extract all plugins from plugins folder (85-90% progress)
-      logger.info('=== Step 3: Extracting plugins from plugins folder ===');
-      await this.extractAllPlugins();
+      // On Linux these are Windows .dll archives; skip them to avoid polluting the plugin directory
+      if (!isLinux) {
+        logger.info('=== Step 3: Extracting plugins from plugins folder ===');
+        await this.extractAllPlugins();
+      }
 
       if (this.isCancelled) {
         return { success: false, error: 'Installation cancelled by user' };
@@ -404,7 +491,7 @@ export class PluginInstaller {
     return new Promise((resolve) => {
       const checkProcess = spawn(PATHS.PYTHON, args, {
         cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,
-        windowsHide: true
+        ...platformSpawnOptions(),
       });
 
       let outputBuffer = '';
@@ -478,7 +565,7 @@ export class PluginInstaller {
       return new Promise((resolve) => {
         this.installProcess = spawn(PATHS.PYTHON, args, {
           cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,
-          windowsHide: true
+          ...platformSpawnOptions(),
         });
 
         let errorBuffer = '';

@@ -4,13 +4,20 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { logger } from './logger';
 import { PATHS } from './constants';
-import { isWindows, isLinux, platformSpawnOptions } from './platform';
-import { getLinuxVsPluginSearchPaths } from './linuxRuntime';
+import { isWindows, isLinux, platformSpawnOptions, resolveCommandPath } from './platform';
+import { buildLinuxVsEnvironment } from './vsEnvironment';
+import { detectGpuCapabilities } from './gpuDetection';
 
 export interface ProcessResult {
   stdout: string;
   stderr: string;
   code: number;
+}
+
+export interface GpuStats {
+  gpuMemoryUsed: number;
+  gpuMemoryTotal: number;
+  gpuUtilization: number;
 }
 
 export function getErrorMessage(error: unknown): string {
@@ -46,93 +53,139 @@ export async function runCommand(
   env?: NodeJS.ProcessEnv
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Quote paths containing spaces for shell safety (Windows and Linux)
-    const quotedCommand = command.includes(' ') ? `"${command}"` : command;
-    const quotedArgs = args.map(arg => arg.includes(' ') ? `"${arg}"` : arg);
-
-    logger.debug(`Running command: ${quotedCommand} ${quotedArgs.join(' ')}`);
+    logger.debug(`Running command: ${command} ${args.join(' ')}`);
     logger.debug(`Working directory: ${cwd || process.cwd()}`);
 
-    const proc = spawn(quotedCommand, quotedArgs, {
-      cwd: cwd || process.cwd(),
-      shell: true,
-      env: env || process.env,
-      ...platformSpawnOptions(),
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    if (proc.stdout) {
-      proc.stdout.on('data', (data) => {
-        const output = data.toString();
-        stdout += output;
-        logger.debug(`[stdout] ${output.trim()}`);
-      });
-    }
-
-    if (proc.stderr) {
-      proc.stderr.on('data', (data) => {
-        const output = data.toString();
-        stderr += output;
-        logger.debug(`[stderr] ${output.trim()}`);
-      });
-    }
-
-    proc.on('close', (code) => {
-      if (code === 0) {
-        logger.debug(`Command completed successfully with code ${code}`);
-        resolve();
-      } else {
-        const errorMsg = `Command failed with code ${code}: ${stderr || stdout}`;
-        logger.error(errorMsg);
-        reject(new Error(errorMsg));
+    resolveCommandPath(command, env || process.env).then((resolved) => {
+      if (!resolved) {
+        reject(new Error(`Command not found: ${command}`));
+        return;
       }
-    });
 
-    proc.on('error', (error) => {
-      logger.error('Command execution error:', error);
-      reject(error);
-    });
+      const proc = spawn(resolved, args, {
+        cwd: cwd || process.cwd(),
+        env: env || process.env,
+        ...platformSpawnOptions(),
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      if (proc.stdout) {
+        proc.stdout.on('data', (data) => {
+          const output = data.toString();
+          stdout += output;
+          logger.debug(`[stdout] ${output.trim()}`);
+        });
+      }
+
+      if (proc.stderr) {
+        proc.stderr.on('data', (data) => {
+          const output = data.toString();
+          stderr += output;
+          logger.debug(`[stderr] ${output.trim()}`);
+        });
+      }
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          logger.debug(`Command completed successfully with code ${code}`);
+          resolve();
+        } else {
+          const errorMsg = `Command failed with code ${code}: ${stderr || stdout}`;
+          logger.error(errorMsg);
+          reject(new Error(errorMsg));
+        }
+      });
+
+      proc.on('error', (error) => {
+        logger.error('Command execution error:', error);
+        reject(error);
+      });
+    }).catch(reject);
   });
 }
 
+export async function runCommandCapture(command: string, args: string[], timeoutMs = 5000): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    resolveCommandPath(command).then((resolved) => {
+      if (!resolved) {
+        resolve(undefined);
+        return;
+      }
+
+      const proc = spawn(resolved, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        ...platformSpawnOptions(),
+      });
+
+      let stdout = '';
+      let settled = false;
+      const finish = (value?: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => {
+        try { proc.kill(); } catch {}
+        finish(undefined);
+      }, timeoutMs);
+
+      proc.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+      proc.on('close', (code) => finish(code === 0 && stdout.trim() ? stdout : undefined));
+      proc.on('error', () => finish(undefined));
+    }).catch(() => resolve(undefined));
+  });
+}
+
+export async function pollGpuStats(): Promise<GpuStats | null> {
+  try {
+    const output = await runCommandCapture('nvidia-smi', [
+      '--query-gpu=memory.used,memory.total,utilization.gpu',
+      '--format=csv,noheader,nounits'
+    ], 3000);
+
+    if (output?.trim()) {
+      const parts = output.trim().split(',').map(s => s.trim());
+      if (parts.length >= 3) {
+        return {
+          gpuMemoryUsed: parseInt(parts[0], 10),
+          gpuMemoryTotal: parseInt(parts[1], 10),
+          gpuUtilization: parseInt(parts[2], 10)
+        };
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function detectCudaSupport(): Promise<boolean> {
+  try {
+    const gpus = await detectGpuCapabilities();
+    if (gpus.nvidia.available) {
+      logger.info(`CUDA GPU detected: ${gpus.nvidia.name || 'NVIDIA GPU'}${gpus.nvidia.cudaVersion ? ` (CUDA ${gpus.nvidia.cudaVersion})` : ''}`);
+      return true;
+    }
+    logger.info('No CUDA support detected');
+    return false;
+  } catch (error) {
+    logger.info('Error detecting CUDA support:', error);
+    return false;
+  }
+}
+
 export function setupVSEnvironment(pythonPath?: string): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-
   if (isLinux) {
-    const pythonDir = path.dirname(pythonPath || PATHS.PYTHON);
-    env['PATH'] = `${pythonDir}${path.delimiter}${env['PATH'] || ''}`;
-
-    const vsLibDir = path.join(path.dirname(pythonDir), 'lib');
-    const ldPath = env['LD_LIBRARY_PATH']
-      ? `${vsLibDir}${path.delimiter}${env['LD_LIBRARY_PATH']}`
-      : vsLibDir;
-    env['LD_LIBRARY_PATH'] = ldPath;
-
-    if (env['PYTHONHOME']) {
-      delete env['PYTHONHOME'];
-    }
-
-    // Expose venv site-packages so system vspipe can import packages installed into our venv
-    const venvRoot = path.dirname(pythonDir);
-    const sitePackagesCandidates = [
-      path.join(venvRoot, 'lib', 'python3.13', 'site-packages'),
-      path.join(venvRoot, 'lib', 'python3.12', 'site-packages'),
-      path.join(venvRoot, 'lib', 'python3.11', 'site-packages'),
-      path.join(venvRoot, 'lib', 'python3.10', 'site-packages'),
-      path.join(venvRoot, 'lib', 'python3.9', 'site-packages'),
-      path.join(venvRoot, 'lib', 'python3', 'site-packages'),
-    ];
-    const sitePackages = sitePackagesCandidates.find(sp => fs.existsSync(sp));
-    if (sitePackages) {
-      env['PYTHONPATH'] = env['PYTHONPATH']
-        ? `${sitePackages}${path.delimiter}${env['PYTHONPATH']}`
-        : sitePackages;
-    }
+    return buildLinuxVsEnvironment(pythonPath || PATHS.PYTHON);
   }
 
-  if (pythonPath && !isLinux) {
+  const env = { ...process.env };
+
+  if (pythonPath) {
     const pythonDir = path.dirname(pythonPath);
     env['PATH'] = `${pythonDir}${path.delimiter}${env['PATH'] || ''}`;
 
@@ -142,13 +195,7 @@ export function setupVSEnvironment(pythonPath?: string): NodeJS.ProcessEnv {
     }
   }
 
-  // Blend app-data, system, Flatpak, and pre-existing VapourSynth plugin paths on Linux
-  if (isLinux) {
-    const pluginDirs = getLinuxVsPluginSearchPaths();
-    const combined = pluginDirs.join(path.delimiter);
-    env['VS_PLUGINS_PATH'] = combined;
-    env['VAPOURSYNTH_PLUGINS_PATH'] = combined;
-  } else {
+  if (!isLinux) {
     env['VS_PLUGINS_PATH'] = PATHS.PLUGINS;
     env['VAPOURSYNTH_PLUGINS_PATH'] = PATHS.PLUGINS;
   }
@@ -171,103 +218,5 @@ export async function withLogSeparator<T>(
   } catch (error) {
     logger.separator();
     throw error;
-  }
-}
-
-export interface GpuStats {
-  gpuMemoryUsed: number;
-  gpuMemoryTotal: number;
-  gpuUtilization: number;
-}
-
-export async function pollGpuStats(): Promise<GpuStats | null> {
-  try {
-    const proc = spawn('nvidia-smi', [
-      '--query-gpu=memory.used,memory.total,utilization.gpu',
-      '--format=csv,noheader,nounits'
-    ], {
-      shell: true,
-      ...platformSpawnOptions(),
-    });
-
-    return new Promise((resolve) => {
-      let output = '';
-
-      if (proc.stdout) {
-        proc.stdout.on('data', (data) => {
-          output += data.toString();
-        });
-      }
-
-      proc.on('close', (code) => {
-        if (code === 0 && output.trim()) {
-          const parts = output.trim().split(',').map(s => s.trim());
-          if (parts.length >= 3) {
-            resolve({
-              gpuMemoryUsed: parseInt(parts[0], 10),
-              gpuMemoryTotal: parseInt(parts[1], 10),
-              gpuUtilization: parseInt(parts[2], 10)
-            });
-            return;
-          }
-        }
-        resolve(null);
-      });
-
-      proc.on('error', () => resolve(null));
-
-      setTimeout(() => {
-        proc.kill();
-        resolve(null);
-      }, 3000);
-    });
-  } catch {
-    return null;
-  }
-}
-
-export async function detectCudaSupport(): Promise<boolean> {
-  try {
-    const proc = spawn('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], {
-      shell: true,
-      ...platformSpawnOptions(),
-    });
-
-    return new Promise((resolve) => {
-      let hasOutput = false;
-
-      if (proc.stdout) {
-        proc.stdout.on('data', (data) => {
-          const output = data.toString().trim();
-          if (output.length > 0) {
-            hasOutput = true;
-            logger.info(`CUDA GPU detected: ${output}`);
-          }
-        });
-      }
-
-      proc.on('close', (code) => {
-        if (code === 0 && hasOutput) {
-          logger.info('CUDA support detected');
-          resolve(true);
-        } else {
-          logger.info('No CUDA support detected');
-          resolve(false);
-        }
-      });
-
-      proc.on('error', () => {
-        logger.info('nvidia-smi not found - no CUDA support');
-        resolve(false);
-      });
-
-      setTimeout(() => {
-        proc.kill();
-        resolve(false);
-      }, 3000);
-    });
-  } catch (error) {
-    logger.info('Error detecting CUDA support:', error);
-    return false;
   }
 }

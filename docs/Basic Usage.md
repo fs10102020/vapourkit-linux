@@ -51,10 +51,21 @@ On Linux packaged builds, app data is stored in the platform user-data location 
 
 ### Inference Backends
 
-The backend selector only shows backends that are supported by the current runtime:
+The backend selector only shows backends that are supported by the current runtime. Use the expandable **Backend diagnostics** section in Settings to see detected ONNX providers, ONNX Runtime version/plugin path, NVIDIA GPU details, and probe errors.
 - **TensorRT**: Uses `.engine` files and requires NVIDIA TensorRT support. On Linux, both `core.trt` and `trtexec` must be available.
-- **ONNX Runtime CUDA**: Uses `.onnx` files with CUDA acceleration through `core.ort`.
+- **ONNX Runtime CUDA**: Uses `.onnx` files when the CUDA provider is reported by `core.ort.Version()` and an NVIDIA CUDA-capable GPU is detected. Provider detection does not guarantee every model will execute successfully.
 - **ONNX Runtime CPU**: Uses `.onnx` files on CPU. This is the broadest Linux fallback but is slower.
 - **DirectML**: Windows-only ONNX Runtime backend for DirectX 12 GPUs.
 
 If a workflow or queue item was saved with an unsupported backend, Vapourkit remaps it to a supported backend before processing. Linux remaps DirectML workflows to ONNX Runtime CPU unless another supported backend is selected.
+
+### Platform-Specific Notes
+
+#### Linux
+- **Plugin compatibility**: The Windows plugin bundle (DLLs extracted during setup) is not functional on Linux even if extracted. Filters that depend on Windows-native VapourSynth plugins will not work. Only system-installed or source-built `.so` plugins are usable.
+- **Multiple plugin search paths**: Plugins are searched in app data, Flatpak paths, system directories, user-local, and environment-provided paths. Includes `/usr/lib64/vapoursynth` and `/usr/lib/x86_64-linux-gnu/vapoursynth` for multiarch systems.
+- **VapourSynth version matching**: The venv's `vapoursynth` Python package is uninstalled after setup so system `vspipe`'s embedded Python uses the system-distributed bindings, avoiding ABI version mismatches with `libvapoursynth.so`.
+- **TensorRT optional**: The TensorRT plugin (`core.trt`) is never auto-built or auto-downloaded on Linux. Install it through your distribution or build from source.
+- **AMD/ROCm diagnostic-only**: AMD GPU and ROCm runtime presence may appear in diagnostics, but no `onnxruntime-rocm` backend is exposed because current vs-mlrt `core.ort` does not report a ROCm provider.
+- **vsview fallback**: Preview launch tries the configured `vsview` executable, then `vsview` on PATH using the VapourSynth environment, then `python -m vsview` from the app venv.
+- **Flatpak file access**: The Flatpak sandbox limits file access to common XDG folders (Videos, Downloads, Pictures, Documents, Music). To process files elsewhere, use Flatpak's file chooser portal or adjust `--filesystem` permissions.

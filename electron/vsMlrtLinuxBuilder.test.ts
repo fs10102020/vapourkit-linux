@@ -53,8 +53,8 @@ import { VsMlrtLinuxBuilder } from './vsMlrtLinuxBuilder';
 describe('VsMlrtLinuxBuilder.detectBuildTools', () => {
   it('returns status for all required tools', async () => {
     const tools = await VsMlrtLinuxBuilder.detectBuildTools();
-    expect(tools.length).toBe(5);
-    expect(tools.map(t => t.name)).toEqual(['cmake', 'ninja', 'git', 'gcc', 'g++']);
+    expect(tools.length).toBe(7);
+    expect(tools.map(t => t.name)).toEqual(['cmake', 'ninja', 'git', 'gcc', 'g++', 'patchelf', 'ldd']);
   });
 });
 
@@ -66,6 +66,8 @@ describe('VsMlrtLinuxBuilder.isBuildEnvironmentReady', () => {
       { name: 'git', found: true },
       { name: 'gcc', found: true },
       { name: 'g++', found: true },
+      { name: 'patchelf', found: true },
+      { name: 'ldd', found: true },
     ] as any;
     expect(VsMlrtLinuxBuilder.isBuildEnvironmentReady(tools)).toBe(true);
   });
@@ -77,6 +79,8 @@ describe('VsMlrtLinuxBuilder.isBuildEnvironmentReady', () => {
       { name: 'git', found: true },
       { name: 'gcc', found: true },
       { name: 'g++', found: true },
+      { name: 'patchelf', found: true },
+      { name: 'ldd', found: true },
     ] as any;
     expect(VsMlrtLinuxBuilder.isBuildEnvironmentReady(tools)).toBe(false);
   });
@@ -88,6 +92,8 @@ describe('VsMlrtLinuxBuilder.isBuildEnvironmentReady', () => {
       { name: 'git', found: true },
       { name: 'gcc', found: true },
       { name: 'g++', found: true },
+      { name: 'patchelf', found: true },
+      { name: 'ldd', found: true },
     ] as any;
     expect(VsMlrtLinuxBuilder.isBuildEnvironmentReady(tools)).toBe(false);
   });
@@ -99,6 +105,8 @@ describe('VsMlrtLinuxBuilder.isBuildEnvironmentReady', () => {
       { name: 'git', found: true },
       { name: 'gcc', found: false },
       { name: 'g++', found: true },
+      { name: 'patchelf', found: true },
+      { name: 'ldd', found: true },
     ] as any;
     expect(VsMlrtLinuxBuilder.isBuildEnvironmentReady(tools)).toBe(false);
   });
@@ -106,9 +114,11 @@ describe('VsMlrtLinuxBuilder.isBuildEnvironmentReady', () => {
 
 describe('VsMlrtLinuxBuilder.getBuildToolGuide', () => {
   it('mentions missing tools in the guide', () => {
-    const guide = VsMlrtLinuxBuilder.getBuildToolGuide(['cmake', 'gcc']);
+    const guide = VsMlrtLinuxBuilder.getBuildToolGuide(['cmake', 'gcc', 'patchelf', 'ldd']);
     expect(guide).toContain('cmake');
     expect(guide).toContain('gcc');
+    expect(guide).toContain('patchelf');
+    expect(guide).toContain('ldd');
     expect(guide).toContain('pacman');
     expect(guide).toContain('apt');
     expect(guide).toContain('dnf');
@@ -123,6 +133,8 @@ describe('VsMlrtLinuxBuilder.buildAndInstall', () => {
       { name: 'git', found: false },
       { name: 'gcc', found: false },
       { name: 'g++', found: false },
+      { name: 'patchelf', found: false },
+      { name: 'ldd', found: false },
     ] as any);
 
     const builder = new VsMlrtLinuxBuilder();

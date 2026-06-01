@@ -29,7 +29,7 @@ Batch items use the same filter chain and model selection UI as single-file proc
 - **Auto Paths**: Output paths are auto-generated with `_upscaled` suffix (e.g., `video.mp4` → `video_upscaled.mkv`. Existing files are overwritten without warning)
 - **Queue Management**: Reorder by dragging, cancel items, requeue failed videos, or clear completed items
 - **Persistent**: Queue saves automatically to `data/config/queue.json` in development and to the app-data config directory in packaged Linux builds.
-- **Backend Migration**: Older queue items without backend metadata are migrated on load. Unsupported DirectML queue entries on Linux are remapped to ONNX Runtime CPU.
+- **Backend Migration**: Older queue items without backend metadata are migrated on load. Queue entries saved with unsupported backends are validated against current backend capabilities and remapped to the recommended supported backend before processing.
 
 ### Tips
 

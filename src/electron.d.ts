@@ -148,7 +148,8 @@ export interface ElectronAPI {
   // Encoding settings panel state
   getEncodingSettingsExpanded: () => Promise<{ expanded: boolean }>;
   setEncodingSettingsExpanded: (expanded: boolean) => Promise<{ success: boolean }>;
-  getDefaultVideoCompareArgs: () => Promise<{ args: string }>;
+  getOnnxRuntimeConfig: () => Promise<OnnxRuntimeConfig>;
+  setOnnxRuntimeConfig: (config: OnnxRuntimeConfig) => Promise<{ success: boolean }>;
 
   // Panel sizes
   getPanelSizes: () => Promise<{ leftPanel: number; rightPanel: number; queuePanel?: number }>;
@@ -232,6 +233,13 @@ export interface SetupProgress {
   component: string;
   progress: number;
   message: string;
+}
+
+export interface OnnxRuntimeConfig {
+  source: 'prebuilt' | 'system';
+  includeDir?: string;
+  libDir?: string;
+  copyLibraries?: boolean;
 }
 
 export interface VideoInfo {
@@ -356,6 +364,7 @@ export interface ModelImportProgress {
   progress: number;
   message: string;
   enginePath?: string;
+  modelPath?: string;
   detectedShape?: string;
   detectedStatic?: boolean;
 }

@@ -14,6 +14,10 @@ finish-args:
   - --socket=wayland
   - --share=network
   - --device=dri
+  # Required for experimental ROCm provider probing and AMD GPU compute access.
+  # The default Flatpak build remains CPU-oriented unless a ROCm-enabled ONNX
+  # Runtime is supplied/configured.
+  - --device=all
   - --filesystem=xdg-videos
   - --filesystem=xdg-download
   - --filesystem=xdg-pictures
@@ -42,6 +46,7 @@ modules:
       - type: git
         url: https://bitbucket.org/multicoreware/x265_git.git
         tag: '3.5'
+        subdir: source
 
   - name: ffmpeg
     config-opts:
@@ -122,7 +127,7 @@ modules:
       # 4. Build vsort
       - cmake -S vs-mlrt/vsort -B vs-mlrt/vsort/build -G Ninja
         -DCMAKE_BUILD_TYPE=Release
-        -DCMAKE_CXX_FLAGS="-Wall -ffast-math -march=x86-64-v3"
+        -DCMAKE_CXX_FLAGS="-Wall -ffast-math -march=x86-64"
         -DVAPOURSYNTH_INCLUDE_DIRECTORY=/app/include/vapoursynth
         -DONNX_RUNTIME_API_DIRECTORY=/app/build-deps/onnxruntime/include
         -DONNX_RUNTIME_LIB_DIRECTORY=/app/build-deps/onnxruntime/lib
@@ -130,6 +135,8 @@ modules:
         -DONNX_DIR=/app/build-deps/onnx/lib/cmake/ONNX
         -DCMAKE_CXX_STANDARD=20
         -DCMAKE_INSTALL_LIBDIR=lib
+        '-DCMAKE_INSTALL_RPATH=$ORIGIN:$ORIGIN/..'
+        -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
         -DCMAKE_INSTALL_PREFIX=/app/build-deps/vsort
       - cmake --build vs-mlrt/vsort/build --parallel
       - cmake --install vs-mlrt/vsort/build --prefix /app/build-deps/vsort
@@ -137,6 +144,7 @@ modules:
       # 5. Install the plugin into the VapourSynth plugin directory
       - install -Dm644 /app/build-deps/vsort/lib/libvsort.so /app/lib/vapoursynth/libvsort.so
       - install -Dm644 /app/build-deps/onnxruntime/lib/libonnxruntime.so* /app/lib/
+      - patchelf --set-rpath '$ORIGIN:$ORIGIN/..' /app/lib/vapoursynth/libvsort.so
     sources:
       - type: git
         url: https://github.com/protocolbuffers/protobuf.git
@@ -180,6 +188,8 @@ modules:
       env:
         npm_config_cache: /run/build/vapourkit/flatpak-node/npm-cache
         npm_config_offline: 'true'
+        ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        ONNXRUNTIME_NODE_INSTALL: 'skip'
     build-commands:
       - npm ci
       - npm run build

@@ -4,8 +4,10 @@ import { spawn } from 'child_process';
 import axios from 'axios';
 import { PATHS, VS_MLRT_VERSION } from './constants';
 import { logger } from './logger';
-import { platformSpawnOptions } from './platform';
+import { platformSpawnOptions, resolveCommandPath } from './platform';
 import { runCommand } from './utils';
+import { configManager } from './configManager';
+import { validateSharedLibrary } from './nativeValidation';
 
 export interface VsMlrtBuildProgress {
   progress: number;
@@ -18,6 +20,14 @@ export interface BuildToolStatus {
   name: string;
   found: boolean;
   path?: string;
+}
+
+interface OnnxRuntimeLayout {
+  source: 'prebuilt' | 'system';
+  rootDir?: string;
+  includeDir: string;
+  libDir: string;
+  copyLibraries: boolean;
 }
 
 /** Versions pinned to match the vs-mlrt GitHub Actions workflow. */
@@ -51,7 +61,7 @@ export class VsMlrtLinuxBuilder {
    * Checks whether the minimal build toolchain is available.
    */
   static async detectBuildTools(): Promise<BuildToolStatus[]> {
-    const tools = ['cmake', 'ninja', 'git', 'gcc', 'g++'];
+    const tools = ['cmake', 'ninja', 'git', 'gcc', 'g++', 'patchelf', 'ldd'];
     const results: BuildToolStatus[] = [];
 
     for (const tool of tools) {
@@ -66,7 +76,7 @@ export class VsMlrtLinuxBuilder {
    * Returns true when all required build tools are present.
    */
   static isBuildEnvironmentReady(tools: BuildToolStatus[]): boolean {
-    const required = ['cmake', 'ninja', 'git', 'gcc', 'g++'];
+    const required = ['cmake', 'ninja', 'git', 'gcc', 'g++', 'patchelf', 'ldd'];
     return required.every(r => tools.some(t => t.name === r && t.found));
   }
 
@@ -78,9 +88,11 @@ export class VsMlrtLinuxBuilder {
     return (
       `Missing build tools required to compile vs-mlrt: ${names}\n` +
       `Install them with your package manager:\n` +
-      `  Arch: sudo pacman -S base-devel cmake ninja git\n` +
-      `  Debian/Ubuntu: sudo apt install build-essential cmake ninja-build git\n` +
-      `  Fedora: sudo dnf install gcc gcc-c++ cmake ninja-build git`
+      `  Arch: sudo pacman -S base-devel cmake ninja git patchelf glibc\n` +
+      `  Debian/Ubuntu: sudo apt install build-essential cmake ninja-build git patchelf libc-bin\n` +
+      `  Fedora: sudo dnf install gcc gcc-c++ cmake ninja-build git patchelf glibc-common\n` +
+      `  openSUSE: sudo zypper install -t pattern devel_basis && sudo zypper install cmake ninja git patchelf glibc\n` +
+      `  Other distros: install a C++20 compiler, CMake, Ninja, Git, patchelf, and ldd`
     );
   }
 
@@ -106,8 +118,9 @@ export class VsMlrtLinuxBuilder {
     // 2. Build or reuse cached ONNX
     const onnxInstall = await this.buildOnnx(protobufInstall);
 
-    // 3. Download ONNX Runtime binaries
-    const ortDir = await this.downloadOnnxRuntime();
+    // 3. Resolve ONNX Runtime binaries. Prebuilt CPU is the default; advanced
+    // users can point VapourKit at a system ROCm/CUDA-enabled ONNX Runtime.
+    const ortLayout = await this.resolveOnnxRuntimeLayout();
 
     // 4. Find VapourSynth headers
     const vsIncludeDir = await this.findVapourSynthHeaders();
@@ -124,7 +137,7 @@ export class VsMlrtLinuxBuilder {
       vsMlrtSourceDir,
       vsortBuildDir,
       vsIncludeDir,
-      ortDir,
+      ortLayout,
       protobufInstall,
       onnxInstall
     );
@@ -146,7 +159,12 @@ export class VsMlrtLinuxBuilder {
     }
 
     await fs.copy(builtSo, finalSo, { overwrite: true });
-    await this.copyOnnxRuntimeLibraries(ortDir);
+    await this.copyOnnxRuntimeLibraries(ortLayout);
+    await this.setPluginRpath(finalSo, ortLayout);
+    const validation = await validateSharedLibrary(finalSo);
+    if (!validation.ok) {
+      throw new Error(`Installed vsort.so has unresolved native dependencies: ${validation.missing.join(', ')}`);
+    }
     this.emitProgress(100, 'vs-mlrt ONNX Runtime plugin installed successfully');
 
     logger.dependency(`Installed vsort.so to ${finalSo}`);
@@ -257,6 +275,56 @@ export class VsMlrtLinuxBuilder {
     return onnxInstall;
   }
 
+  private async resolveOnnxRuntimeLayout(): Promise<OnnxRuntimeLayout> {
+    const configured = configManager.getOnnxRuntimeConfig();
+    if (configured.source === 'system') {
+      if (!configured.includeDir || !configured.libDir) {
+        throw new Error('System ONNX Runtime selected but includeDir/libDir are not configured. Set VAPOURKIT_ONNXRUNTIME_INCLUDE_DIR and VAPOURKIT_ONNXRUNTIME_LIB_DIR, or configure systemOnnxRuntime in app-config.json.');
+      }
+
+      const layout: OnnxRuntimeLayout = {
+        source: 'system',
+        includeDir: configured.includeDir,
+        libDir: configured.libDir,
+        copyLibraries: !!configured.copyLibraries,
+      };
+      await this.validateOnnxRuntimeLayout(layout);
+      logger.dependency(`Using system ONNX Runtime from ${layout.libDir}`);
+      return layout;
+    }
+
+    const rootDir = await this.downloadOnnxRuntime();
+    const layout: OnnxRuntimeLayout = {
+      source: 'prebuilt',
+      rootDir,
+      includeDir: path.join(rootDir, 'include'),
+      libDir: path.join(rootDir, 'lib'),
+      copyLibraries: true,
+    };
+    await this.validateOnnxRuntimeLayout(layout);
+    return layout;
+  }
+
+  private async validateOnnxRuntimeLayout(layout: OnnxRuntimeLayout): Promise<void> {
+    const headerCandidates = [
+      path.join(layout.includeDir, 'onnxruntime_c_api.h'),
+      path.join(layout.includeDir, 'onnxruntime', 'core', 'session', 'onnxruntime_c_api.h'),
+    ];
+    if (!headerCandidates.some(candidate => fs.pathExistsSync(candidate))) {
+      throw new Error(`ONNX Runtime C API header not found under ${layout.includeDir}`);
+    }
+
+    const libPath = path.join(layout.libDir, 'libonnxruntime.so');
+    if (!await fs.pathExists(libPath)) {
+      throw new Error(`ONNX Runtime shared library not found: ${libPath}`);
+    }
+
+    const validation = await validateSharedLibrary(libPath);
+    if (!validation.ok) {
+      throw new Error(`ONNX Runtime library has unresolved dependencies: ${validation.missing.join(', ')}`);
+    }
+  }
+
   /** Download ONNX Runtime Linux binaries from the official Microsoft release. */
   private async downloadOnnxRuntime(): Promise<string> {
     const ortDir = path.join(this.buildCache, `onnxruntime-${ONNX_RUNTIME_VERSION}`);
@@ -358,7 +426,7 @@ export class VsMlrtLinuxBuilder {
     vsMlrtSrc: string,
     buildDir: string,
     vsIncludeDir: string,
-    ortDir: string,
+    ortLayout: OnnxRuntimeLayout,
     protobufInstall: string,
     onnxInstall: string
   ): Promise<void> {
@@ -370,15 +438,15 @@ export class VsMlrtLinuxBuilder {
       '-B', buildDir,
       '-G', 'Ninja',
       '-DCMAKE_BUILD_TYPE=Release',
-      '-DCMAKE_CXX_FLAGS=-Wall -ffast-math -march=x86-64-v3',
+      '-DCMAKE_CXX_FLAGS=-Wall -ffast-math -march=x86-64',
       `-DVAPOURSYNTH_INCLUDE_DIRECTORY=${vsIncludeDir}`,
-      `-DONNX_RUNTIME_API_DIRECTORY=${path.join(ortDir, 'include')}`,
-      `-DONNX_RUNTIME_LIB_DIRECTORY=${path.join(ortDir, 'lib')}`,
+      `-DONNX_RUNTIME_API_DIRECTORY=${ortLayout.includeDir}`,
+      `-DONNX_RUNTIME_LIB_DIRECTORY=${ortLayout.libDir}`,
       `-Dprotobuf_DIR=${path.join(protobufInstall, 'lib', 'cmake', 'protobuf')}`,
       `-DONNX_DIR=${path.join(onnxInstall, 'lib', 'cmake', 'ONNX')}`,
       '-DCMAKE_CXX_STANDARD=20',
       '-DCMAKE_INSTALL_LIBDIR=lib',
-      '-DCMAKE_INSTALL_RPATH=\$ORIGIN',
+      '-DCMAKE_INSTALL_RPATH=$ORIGIN',
       '-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON',
       `-DCMAKE_INSTALL_PREFIX=${path.join(vsMlrtSrc, 'vsort', 'install')}`,
     ];
@@ -386,14 +454,23 @@ export class VsMlrtLinuxBuilder {
     await runCommand('cmake', cmakeArgs, vsMlrtSrc);
   }
 
-  private async copyOnnxRuntimeLibraries(ortDir: string): Promise<void> {
-    const ortLibDir = path.join(ortDir, 'lib');
-    const files = await fs.readdir(ortLibDir);
-    const libs = files.filter(file => file.startsWith('libonnxruntime.so'));
+  private async copyOnnxRuntimeLibraries(layout: OnnxRuntimeLayout): Promise<void> {
+    if (!layout.copyLibraries) {
+      logger.dependency('Using system ONNX Runtime in-place; not copying ONNX Runtime libraries');
+      return;
+    }
+
+    const files = await fs.readdir(layout.libDir);
+    const libs = files.filter(file => file.startsWith('libonnxruntime'));
 
     for (const lib of libs) {
-      await fs.copy(path.join(ortLibDir, lib), path.join(this.pluginOutputDir, lib), { overwrite: true });
+      await fs.copy(path.join(layout.libDir, lib), path.join(this.pluginOutputDir, lib), { overwrite: true });
     }
+  }
+
+  private async setPluginRpath(pluginPath: string, layout: OnnxRuntimeLayout): Promise<void> {
+    const rpath = layout.copyLibraries ? '$ORIGIN' : `$ORIGIN:${layout.libDir}`;
+    await runCommand('patchelf', ['--set-rpath', rpath, pluginPath], this.pluginOutputDir);
   }
 
   private async buildVsSort(buildDir: string): Promise<void> {
@@ -408,7 +485,7 @@ export class VsMlrtLinuxBuilder {
   private async runGit(args: string[], cwd?: string): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
-      let timeout: NodeJS.Timeout;
+      let timeout: NodeJS.Timeout | undefined;
       const finish = (error?: Error) => {
         if (settled) return;
         settled = true;
@@ -420,33 +497,42 @@ export class VsMlrtLinuxBuilder {
         }
       };
 
-      const proc = spawn('git', args, {
-        cwd: cwd || this.buildCache,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        ...platformSpawnOptions(),
-      });
-
-      let stderr = '';
-      proc.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString();
-      });
-
-      proc.on('close', (code) => {
-        if (code === 0) {
-          finish();
-        } else {
-          finish(new Error(`git ${args.join(' ')} failed: ${stderr.trim()}`));
+      resolveCommandPath('git').then((git) => {
+        if (!git) {
+          finish(new Error('git not found on PATH'));
+          return;
         }
-      });
 
-      proc.on('error', (err) => {
-        finish(new Error(`git ${args.join(' ')} error: ${err.message}`));
-      });
+        const proc = spawn(git, args, {
+          cwd: cwd || this.buildCache,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          ...platformSpawnOptions(),
+        });
 
-      timeout = setTimeout(() => {
-        proc.kill();
-        finish(new Error(`git ${args.join(' ')} timed out`));
-      }, 120000);
+        let stderr = '';
+        proc.stderr?.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        proc.on('close', (code) => {
+          if (code === 0) {
+            finish();
+          } else {
+            finish(new Error(`git ${args.join(' ')} failed: ${stderr.trim()}`));
+          }
+        });
+
+        proc.on('error', (err) => {
+          finish(new Error(`git ${args.join(' ')} error: ${err.message}`));
+        });
+
+        timeout = setTimeout(() => {
+          try { proc.kill(); } catch {}
+          finish(new Error(`git ${args.join(' ')} timed out`));
+        }, 120000);
+      }).catch((error) => {
+        finish(error instanceof Error ? error : new Error(String(error)));
+      });
     });
   }
 
@@ -457,23 +543,6 @@ export class VsMlrtLinuxBuilder {
   }
 
   private static async which(command: string): Promise<string | null> {
-    return new Promise((resolve) => {
-      const proc = spawn('which', [command], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        ...platformSpawnOptions(),
-      });
-
-      let output = '';
-      proc.stdout?.on('data', (data: Buffer) => {
-        output += data.toString();
-      });
-
-      proc.on('close', (code) => {
-        const trimmed = output.trim().split('\n')[0]?.trim();
-        resolve(code === 0 && trimmed ? trimmed : null);
-      });
-
-      proc.on('error', () => resolve(null));
-    });
+    return resolveCommandPath(command);
   }
 }

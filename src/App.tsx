@@ -149,7 +149,7 @@ function App() {
   } | null>(null);
 
   // Queue store (data + UI state)
-  const queueStore = useQueueStore({ onLog: addConsoleLog, descriptiveNamingEnabled });
+  const queueStore = useQueueStore({ onLog: addConsoleLog, descriptiveNamingEnabled, backendCapabilities });
 
   // Video processing hooks
   const {
@@ -321,6 +321,7 @@ function App() {
     numStreams,
     segment,
     colorimetry: colorimetrySettings,
+    backendCapabilities,
     setFfmpegArgs: handleUpdateFfmpegArgs,
     setProcessingFormat: handleUpdateProcessingFormat,
     setOutputFormat: handleUpdateOutputFormat,

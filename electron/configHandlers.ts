@@ -5,6 +5,7 @@ import { logger } from './logger';
 import { configManager } from './configManager';
 import { VS_MLRT_VERSION, PATHS } from './constants';
 import { VsMlrtManager } from './vsMlrtManager';
+import { isLinux } from './platform';
 
 // Cache for log file reading - stores last file size for change detection
 let lastLogSize = 0;
@@ -146,6 +147,15 @@ export function registerConfigHandlers(mainWindow: BrowserWindow | null) {
 
   ipcMain.handle('set-encoding-settings-expanded', async (event, expanded: boolean) => {
     await configManager.setEncodingSettingsExpanded(expanded);
+    return { success: true };
+  });
+
+  ipcMain.handle('get-onnx-runtime-config', async () => {
+    return configManager.getOnnxRuntimeConfig();
+  });
+
+  ipcMain.handle('set-onnx-runtime-config', async (event, config: { source: 'prebuilt' | 'system'; includeDir?: string; libDir?: string; copyLibraries?: boolean }) => {
+    await configManager.setOnnxRuntimeConfig(config);
     return { success: true };
   });
 
@@ -322,6 +332,14 @@ export function registerConfigHandlers(mainWindow: BrowserWindow | null) {
   ipcMain.handle('update-vsmlrt-plugin', async (event) => {
     try {
       logger.info('=== Starting automatic vs-mlrt plugin update ===');
+
+      if (isLinux) {
+        logger.info('Automatic vs-mlrt plugin update is not supported on Linux');
+        return {
+          success: false,
+          error: 'Automatic vs-mlrt plugin updates are not supported on Linux. Update through your distribution package manager or rebuild the plugin from source.'
+        };
+      }
       
       // Import utils to check CUDA support
       const { detectCudaSupport } = await import('./utils');

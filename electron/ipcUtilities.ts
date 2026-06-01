@@ -49,13 +49,15 @@ export function sendModelImportProgress(
   type: 'validating' | 'copying' | 'converting' | 'complete' | 'error',
   progress: number,
   message: string,
-  enginePath?: string
+  enginePath?: string,
+  modelPath?: string
 ) {
   mainWindow?.webContents.send('model-import-progress', {
     type,
     progress,
     message,
-    enginePath
+    enginePath,
+    modelPath
   });
 }
 

@@ -3,7 +3,7 @@ import * as fs from 'fs-extra';
 import { spawn } from 'child_process';
 import { PATHS } from './constants';
 import { logger } from './logger';
-import { isWindows, isLinux, exeName, platformSpawnOptions } from './platform';
+import { isWindows, isLinux, exeName, platformSpawnOptions, resolveCommandPath } from './platform';
 
 export interface DependencyStatus {
   component: string;
@@ -66,7 +66,14 @@ export class DependencyResolver {
     logger.info(`Creating Python venv at ${venvPath}`);
     await fs.ensureDir(path.dirname(venvPath));
 
-    const status = await DependencyResolver.runCommand('python3', ['-m', 'venv', venvPath]);
+    let status = await DependencyResolver.runCommand('python3', ['-m', 'venv', '--copies', venvPath]);
+    if (!status.success) {
+      const errorText = status.error || '';
+      if (errorText.includes('unrecognized argument') || errorText.includes('no such option') || errorText.includes('unknown option')) {
+        logger.warn('python3 -m venv does not support --copies; retrying without it');
+        status = await DependencyResolver.runCommand('python3', ['-m', 'venv', venvPath]);
+      }
+    }
     if (!status.success) {
       return {
         component: 'python-venv',
@@ -95,8 +102,7 @@ export class DependencyResolver {
 
     const packages = [
       { name: 'pip/wheel/setuptools', pkgs: ['setuptools', 'wheel', 'pip', '--upgrade'] },
-      { name: 'VapourSynth', pkgs: ['vapoursynth'] },
-      { name: 'vsjetpack', pkgs: ['vsjetpack==1.1.0', 'vapoursynth'] },
+      { name: 'vsjetpack', pkgs: ['vsjetpack==1.1.0'] },
       { name: 'vsview', pkgs: ['vsview==0.5.0'] },
     ];
 
@@ -110,6 +116,31 @@ export class DependencyResolver {
         installed: status.success,
         guide: status.success ? undefined : `Failed to install ${name}: ${status.error || 'unknown error'}`,
       });
+    }
+
+    // Uninstall vapoursynth from the venv so the system vapoursynth is used instead.
+    // vsjetpack pulls vapoursynth as a dependency, but system vspipe is linked against
+    // the system libvapoursynth.so — the venv copy can cause an ABI mismatch.
+    if (isWindows) {
+      // Re-install vapoursynth explicitly with version pin on Windows
+      const vsArgs = ['-m', 'pip', 'install', '--no-warn-script-location', '--cache-dir', PATHS.PIP_CACHE, 'vapoursynth==72'];
+      const vsStatus = await DependencyResolver.runCommand(python, vsArgs);
+      results.push({
+        component: 'pip-vapoursynth',
+        name: 'VapourSynth',
+        installed: vsStatus.success,
+        guide: vsStatus.success ? undefined : `Failed to install VapourSynth: ${vsStatus.error || 'unknown error'}`,
+      });
+    } else {
+      const uninstallArgs = ['-m', 'pip', 'uninstall', '-y', 'vapoursynth'];
+      const uninstallStatus = await DependencyResolver.runCommand(python, uninstallArgs);
+      if (uninstallStatus.success) {
+        results.push({
+          component: 'pip-vapoursynth',
+          name: 'VapourSynth',
+          installed: true,
+        });
+      }
     }
 
     return results;
@@ -167,6 +198,19 @@ export class DependencyResolver {
 
     const result = await DependencyResolver.runCommand('vspipe', ['--version']);
     if (result.success) {
+      const version = parseVapourSynthVersion(result.stdout || '');
+      if (version === null) {
+        logger.warn(`Could not parse VapourSynth version from output: "${(result.stdout || '').trim().split('\n')[0]}"`);
+      }
+      if (version !== null && version < 76) {
+        return {
+          component: 'vapoursynth',
+          name: 'VapourSynth',
+          installed: false,
+          path: await DependencyResolver.which('vspipe') || 'vspipe',
+          guide: `VapourSynth R76 or newer is required; detected R${version}. Update your distro package or build VapourSynth from source.`,
+        };
+      }
       return { component: 'vapoursynth', name: 'VapourSynth', installed: true, path: await DependencyResolver.which('vspipe') || 'vspipe' };
     }
 
@@ -174,7 +218,7 @@ export class DependencyResolver {
       component: 'vapoursynth',
       name: 'VapourSynth',
       installed: false,
-      guide: 'VapourSynth is required for video processing.\n  Arch: sudo pacman -S vapoursynth\n  Debian/Ubuntu: Check distro package availability or build from source\n  Fedora: Check RPM Fusion or build from source\n  See: https://www.vapoursynth.com/doc/installation.html',
+      guide: 'VapourSynth R76+ is required for video processing.\n  Arch: sudo pacman -S vapoursynth\n  Debian/Ubuntu: Check distro package availability or build from source\n  Fedora: Check RPM Fusion or build from source\n  openSUSE: sudo zypper install vapoursynth\n  Other distros: install VapourSynth R76+ with vspipe available on PATH\n  See: https://www.vapoursynth.com/doc/installation.html',
     };
   }
 
@@ -280,58 +324,73 @@ export class DependencyResolver {
     return results;
   }
 
-  private static async runCommand(command: string, args: string[]): Promise<{ success: boolean; error?: string }> {
+  private static async runCommand(command: string, args: string[]): Promise<{ success: boolean; error?: string; stdout?: string }> {
     return new Promise((resolve) => {
-      const proc = spawn(command, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        ...platformSpawnOptions(),
-      });
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+      const finish = (result: { success: boolean; error?: string; stdout?: string }) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolve(result);
+      };
 
-      let stderr = '';
+      resolveCommandPath(command).then((resolved) => {
+        if (!resolved) {
+          finish({ success: false, error: `Command not found: ${command}` });
+          return;
+        }
 
-      proc.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString();
-      });
-
-      proc.on('close', (code) => {
-        resolve({
-          success: code === 0,
-          error: code !== 0 ? stderr.trim() : undefined,
+        const proc = spawn(resolved, args, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          ...platformSpawnOptions(),
         });
-      });
 
-      proc.on('error', () => {
-        resolve({ success: false, error: `Command not found: ${command}` });
-      });
+        let stderr = '';
+        let stdout = '';
 
-      setTimeout(() => {
-        proc.kill();
-        resolve({ success: false, error: `Command timed out: ${command}` });
-      }, 30000);
+        proc.stdout?.on('data', (data: Buffer) => {
+          stdout += data.toString();
+        });
+
+        proc.stderr?.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        proc.on('close', (code) => {
+          finish({
+            success: code === 0,
+            stdout,
+            error: code !== 0 ? stderr.trim() : undefined,
+          });
+        });
+
+        proc.on('error', (error) => {
+          finish({ success: false, error: error.message });
+        });
+
+        timer = setTimeout(() => {
+          try { proc.kill(); } catch {}
+          finish({ success: false, error: `Command timed out: ${command}` });
+        }, 30000);
+      }).catch((error) => {
+        finish({ success: false, error: error instanceof Error ? error.message : String(error) });
+      });
     });
   }
 
   private static async which(command: string): Promise<string | null> {
     try {
-      const proc = spawn(isWindows ? 'where' : 'which', [command], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        ...platformSpawnOptions(),
-      });
-
-      return new Promise((resolve) => {
-        let output = '';
-        proc.stdout?.on('data', (data: Buffer) => {
-          output += data.toString();
-        });
-        proc.on('close', (code) => {
-          const lines = output.trim().split('\n');
-          const first = lines[0]?.trim();
-          resolve(code === 0 && first ? first : null);
-        });
-        proc.on('error', () => resolve(null));
-      });
+      return await resolveCommandPath(command);
     } catch {
       return null;
     }
   }
+}
+
+export function parseVapourSynthVersion(output: string): number | null {
+  const match = output.match(/(?:VapourSynth[^\n\r]*\s)?R\s*(\d+)/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
 }

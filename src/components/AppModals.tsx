@@ -127,6 +127,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
         onResetDefaultOutputFolder={props.onResetDefaultOutputFolder}
         descriptiveNamingEnabled={props.descriptiveNamingEnabled}
         onUpdateDescriptiveNamingEnabled={props.onUpdateDescriptiveNamingEnabled}
+        backendCapabilities={props.backendCapabilities}
       />
 
       <AboutModal

@@ -13,6 +13,7 @@ import { VapourSynthInfoExtractor, OutputInfo } from './vapourSynthInfoExtractor
 import { FFmpegSettingsManager, FFmpegConfig } from './ffmpegSettingsManager';
 import { configManager } from './configManager';
 import { forceKillProcess, executableExists, isLinux } from './platform';
+import { getVapourSynthCwd } from './linuxRuntime';
 
 export interface SegmentSelection {
   enabled: boolean;
@@ -51,7 +52,7 @@ export class UpscaleExecutor {
     this.vspipePath = vspipePath;
     this.pythonPath = pythonPath;
     this.mainWindow = mainWindow;
-    this.vsPath = path.dirname(vspipePath);
+    this.vsPath = isLinux ? getVapourSynthCwd() : path.dirname(vspipePath);
     this.vsInfoExtractor = new VapourSynthInfoExtractor(vspipePath, pythonPath, this.vsPath);
     
     logger.upscale(`Initialized UpscaleExecutor`);

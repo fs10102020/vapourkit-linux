@@ -15,6 +15,67 @@ interface SetupScreenProps {
   onContinueWithoutPlugins: () => void;
 }
 
+interface SetupStep {
+  id: string;
+  name: string;
+  description: string;
+  componentPrefixes: string[];
+}
+
+function getSetupSteps(isLinuxPlatform: boolean, cudaAvailable: boolean): SetupStep[] {
+  if (isLinuxPlatform) {
+    return [
+      { id: 'python', name: 'Python', description: 'Python 3 interpreter', componentPrefixes: ['Python'] },
+      { id: 'python-venv', name: 'Python venv', description: 'Virtual environment', componentPrefixes: ['Python venv'] },
+      { id: 'python-packages', name: 'Python Packages', description: 'Required Python packages', componentPrefixes: ['Python Packages', 'pip-'] },
+      { id: 'ffmpeg', name: 'FFmpeg', description: 'Video encoding/decoding', componentPrefixes: ['FFmpeg'] },
+      { id: 'vapoursynth', name: 'VapourSynth', description: 'Video processing framework', componentPrefixes: ['VapourSynth'] },
+      { id: 'onnx', name: 'vs-mlrt ONNX Runtime', description: 'ONNX Runtime support', componentPrefixes: ['vs-mlrt ONNX Runtime', 'vs-mlrt'] },
+      { id: 'models', name: 'ONNX Models', description: 'Bundled AI upscaling models', componentPrefixes: ['ONNX Models'] },
+      { id: 'plugins', name: 'Plugins & Filters', description: 'PyTorch, vsjetpack, and VapourSynth plugins', componentPrefixes: ['Plugins'] },
+    ];
+  }
+
+  const steps: SetupStep[] = [
+    { id: 'vapoursynth', name: 'VapourSynth Portable R72', description: 'Video processing framework', componentPrefixes: ['VapourSynth R72', 'VapourSynth Portable'] },
+    { id: 'bestsource', name: 'BestSource R13', description: 'Video source filter', componentPrefixes: ['BestSource R13', 'BestSource'] },
+    { id: 'video-compare', name: 'Video Compare Tool', description: 'Side-by-side comparison viewer', componentPrefixes: ['Video Compare Tool'] },
+    { id: 'onnx', name: 'vs-mlrt ONNX Runtime Plugin v15.13', description: 'ONNX Runtime support', componentPrefixes: ['vs-mlrt ONNX Runtime'] },
+    { id: 'python', name: 'Python Embedded', description: 'Python runtime for VapourSynth', componentPrefixes: ['Python Embedded'] },
+    { id: 'ffmpeg', name: 'FFmpeg', description: 'Video encoding/decoding', componentPrefixes: ['FFmpeg'] },
+    { id: 'models', name: 'ONNX Models', description: 'Bundled AI upscaling models', componentPrefixes: ['ONNX Models'] },
+    { id: 'plugins', name: 'Plugins & Filters', description: 'PyTorch, vsjetpack, and VapourSynth plugins', componentPrefixes: ['Plugins'] },
+  ];
+
+  if (cudaAvailable) {
+    steps.splice(4, 0, {
+      id: 'tensorrt',
+      name: 'vs-mlrt TensorRT Plugin v15.13',
+      description: 'AI inference engine (NVIDIA GPUs)',
+      componentPrefixes: ['vs-mlrt TensorRT']
+    });
+  }
+
+  return steps;
+}
+
+function getStepIconColor(stepId: string): string {
+  switch (stepId) {
+    case 'vapoursynth': return 'text-primary-blue';
+    case 'tensorrt': return 'text-primary-purple';
+    case 'onnx': return 'text-accent-cyan';
+    case 'bestsource': return 'text-green-400';
+    case 'video-compare': return 'text-yellow-400';
+    case 'python': return 'text-orange-400';
+    case 'python-venv': return 'text-orange-400';
+    case 'python-packages': return 'text-orange-300';
+    case 'models': return 'text-pink-400';
+    case 'ffmpeg': return 'text-blue-400';
+    case 'plugins': return 'text-primary-purple';
+    default: return 'text-gray-400';
+  }
+}
+
 export const SetupScreen = memo<SetupScreenProps>(({
   isCheckingDeps,
   isSetupComplete,
@@ -26,36 +87,13 @@ export const SetupScreen = memo<SetupScreenProps>(({
   onRetryPlugins,
   onContinueWithoutPlugins,
 }: SetupScreenProps) => {
-  // Define the setup steps with their expected component names
-  // Note: component names must use startsWith matching because backend sends versioned names
-  // e.g., backend sends 'vs-mlrt TensorRT v15.13' but we match against 'vs-mlrt TensorRT'
-  const setupSteps = useMemo(() => {
-    const isLinuxPlatform = backendCapabilities?.platform === 'linux';
-    const steps = [
-      { id: 'vapoursynth', name: isLinuxPlatform ? 'VapourSynth' : 'VapourSynth Portable R72', description: 'Video processing framework', component: 'VapourSynth R72' },
-      { id: 'bestsource', name: 'BestSource R13', description: 'Video source filter', component: 'BestSource R13' },
-      { id: 'video-compare', name: 'Video Compare Tool', description: 'Side-by-side comparison viewer', component: 'Video Compare Tool' },
-      { id: 'onnx', name: isLinuxPlatform ? 'vs-mlrt ONNX Runtime Plugin' : 'vs-mlrt ONNX Runtime Plugin v15.13', description: 'ONNX Runtime support (CPU/CUDA acceleration)', component: 'vs-mlrt ONNX Runtime' },
-    ];
+  const isLinuxPlatform = backendCapabilities?.platform === 'linux';
+  const cudaAvailable = backendCapabilities?.cudaAvailable ?? false;
 
-    if (backendCapabilities?.tensorrtAvailable) {
-      steps.splice(4, 0, {
-        id: 'tensorrt',
-        name: isLinuxPlatform ? 'vs-mlrt TensorRT Plugin' : 'vs-mlrt TensorRT Plugin v15.13',
-        description: 'AI inference engine (NVIDIA GPUs)',
-        component: 'vs-mlrt TensorRT'
-      });
-    }
-
-    steps.push(
-      { id: 'python', name: isLinuxPlatform ? 'Python' : 'Python Embedded', description: 'Python runtime for VapourSynth', component: 'Python Embedded' },
-      { id: 'models', name: 'ONNX Models', description: 'Bundled AI upscaling models', component: 'ONNX Models' },
-      { id: 'ffmpeg', name: 'FFmpeg', description: 'Video encoding/decoding', component: 'FFmpeg' },
-      { id: 'plugins', name: 'Plugins & Filters', description: 'PyTorch, vsjetpack, and bundled VapourSynth plugins', component: 'Plugins' }
-    );
-
-    return steps;
-  }, [backendCapabilities]);
+  const setupSteps = useMemo(
+    () => getSetupSteps(isLinuxPlatform, cudaAvailable),
+    [isLinuxPlatform, cudaAvailable]
+  );
 
   // Track which steps are completed, in progress, or pending
   const stepStatuses = useMemo(() => {
@@ -68,7 +106,7 @@ export const SetupScreen = memo<SetupScreenProps>(({
 
     const statuses: Record<string, 'pending' | 'in-progress' | 'completed'> = {};
     const currentComponent = setupProgress.component;
-    
+
     // Check if all setup is complete (not just one component)
     const isFullyComplete = setupProgress.type === 'complete' && setupProgress.component === 'All Dependencies';
 
@@ -80,14 +118,14 @@ export const SetupScreen = memo<SetupScreenProps>(({
       return statuses;
     }
 
-    // Find the index of the current component
-    // Use startsWith matching because backend sends versioned names (e.g., 'vs-mlrt TensorRT v15.13')
-    // but our step components are base names (e.g., 'vs-mlrt TensorRT')
-    const currentIndex = setupSteps.findIndex(step => currentComponent.startsWith(step.component));
+    // Find the index of the current component using prefix matching
+    const currentIndex = setupSteps.findIndex(step =>
+      step.componentPrefixes.some(prefix => currentComponent.startsWith(prefix))
+    );
 
     for (let i = 0; i < setupSteps.length; i++) {
       const step = setupSteps[i];
-      
+
       if (i < currentIndex) {
         // Steps before current are completed
         statuses[step.id] = 'completed';
@@ -142,17 +180,21 @@ export const SetupScreen = memo<SetupScreenProps>(({
           <div className="bg-dark-elevated rounded-xl p-6 border border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Download Required Components</h2>
             <p className="text-gray-400 text-sm mb-4">
-              The following components will be downloaded and installed to the application's data folder:
+              {isLinuxPlatform
+                ? 'The following system dependencies and app-managed components will be checked or installed:'
+                : "The following components will be downloaded and installed to the application's data folder:"}
             </p>
 
             {/* Component List */}
             <div className="space-y-2 mb-6">
               {setupSteps.map((step) => {
                 const status = stepStatuses[step.id];
-                const isCurrentStep = setupProgress?.component.startsWith(step.component) ?? false;
-                
+                const isCurrentStep = step.componentPrefixes.some(prefix =>
+                  setupProgress?.component.startsWith(prefix) ?? false
+                );
+
                 return (
-                  <div 
+                  <div
                     key={step.id}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
                       status === 'completed' ? 'bg-green-500/10 border border-green-500/20' :
@@ -166,20 +208,9 @@ export const SetupScreen = memo<SetupScreenProps>(({
                     ) : status === 'in-progress' ? (
                       <Loader2 className="w-5 h-5 text-primary-purple animate-spin flex-shrink-0" />
                     ) : (
-                      <Download className={`w-5 h-5 flex-shrink-0 ${
-                        step.id === 'vapoursynth' ? 'text-primary-blue' :
-                        step.id === 'tensorrt' ? 'text-primary-purple' :
-                        step.id === 'onnx' ? 'text-accent-cyan' :
-                        step.id === 'bestsource' ? 'text-green-400' :
-                        step.id === 'video-compare' ? 'text-yellow-400' :
-                        step.id === 'python' ? 'text-orange-400' :
-                        step.id === 'models' ? 'text-pink-400' :
-                        step.id === 'ffmpeg' ? 'text-blue-400' :
-                        step.id === 'plugins' ? 'text-primary-purple' :
-                        'text-gray-400'
-                      }`} />
+                      <Download className={`w-5 h-5 flex-shrink-0 ${getStepIconColor(step.id)}`} />
                     )}
-                    
+
                     {/* Name & Progress */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
@@ -202,11 +233,11 @@ export const SetupScreen = memo<SetupScreenProps>(({
                           </span>
                         )}
                       </div>
-                      
+
                       {/* Progress bar for current step */}
                       {status === 'in-progress' && isCurrentStep && setupProgress && (
                         <div className="mt-1.5 h-1 bg-dark-bg rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className="h-full bg-gradient-to-r from-primary-blue to-primary-purple transition-all duration-300"
                             style={{ width: `${setupProgress.progress}%` }}
                           />

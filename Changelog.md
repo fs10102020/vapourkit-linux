@@ -1,13 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.17.0
 - Add Linux runtime support for native, AppImage, deb/rpm, and Flatpak builds
   - Linux uses system VapourSynth, FFmpeg, Python, BestSource, and vs-mlrt plugins instead of Windows portable dependency downloads
   - App data/log paths now avoid read-only packaged locations on Linux
   - VapourSynth plugin search paths include app data, Flatpak, system, user-local, and environment-provided locations
 - Add runtime backend capability probing
   - Probes `core.ort`, `core.trt`, and `core.bs` through `vspipe`
+  - Detects NVIDIA, AMD/ROCm, and Intel GPU presence for backend diagnostics
+  - Uses `core.ort.Version()` provider reporting before exposing ONNX Runtime CUDA; AMD/ROCm remains diagnostic because current vs-mlrt `core.ort` has no ROCm provider
   - Shows only supported inference backends in Settings
+  - Adds expandable backend diagnostics in Settings with ONNX providers/version/plugin path, NVIDIA GPU details, and probe errors
+  - Refreshes backend capabilities after setup/plugin retry so the renderer sees post-install backend state
   - Defaults Linux to ONNX Runtime CPU when no accelerated backend is available
 - Add ONNX Runtime backend handling for Linux workflows and queues
   - ONNX backends resolve `.onnx` paths and reject engine-only portable model matches
@@ -15,8 +19,36 @@
   - Saved workflows and queue items migrate unsupported DirectML selections on Linux
 - Add Flatpak packaging files and generated npm source metadata
   - Flatpak manifest builds FFmpeg, VapourSynth, BestSource, video-compare, and the Python venv
-  - Documents current vs-mlrt Linux binary gap; packagers must provide `core.ort`/`core.trt` separately until a source-build module is added
+  - Auto-builds vs-mlrt ONNX Runtime plugin (vsort) from source inside the Flatpak
 - Add Linux electron-builder targets and system dependency metadata for AppImage, deb, and rpm builds
+- Add CUDA-aware PyTorch wheel selection (auto-detects CUDA version, falls back to CPU)
+- Add configurable Linux ONNX Runtime source selection for vs-mlrt builds
+  - Default remains Microsoft's prebuilt CPU ONNX Runtime archive
+  - Advanced/system mode accepts include/lib directories for distro-built ONNX Runtime libraries
+  - Validates `libonnxruntime.so` and installed `vsort.so` dependencies with `ldd`
+- Add backend validation at processing boundary (main process + renderer)
+- Remove `navigator.platform` sniffing; use `BackendCapabilities` from main process as single source of truth
+- Fix `sitePackagesDir()` to probe versioned site-packages directories instead of using `os.platform()`
+- Guard `update-vsmlrt-plugin` handler to return graceful error on Linux
+- Guard `windowManager` Windows focus workaround behind `process.platform === 'win32'`
+- Add `PATHS.PLUGINS` to `LD_LIBRARY_PATH` for vsort.so runtime discovery
+- Use `PATHS.TRTEXEC` in `vsMlrtManager.ts` instead of manual path join
+- Centralize backend utilities into `electron/backendUtils.ts`
+
+### Fixes
+- **ASAR 7zip patching**: Created `electron/sevenZip.ts` wrapper that applies the 7zip-bin path fix at module evaluation time, removing the brittle import-ordering requirement. All modules now import from `./sevenZip` instead of `7zip-min` directly.
+- **match_input output format**: Removed hardcoded guards in `getProcessingFormat()`/`setProcessingFormat()` that silently converted `match_input` to `YUV420P8`. The option now correctly preserves the input pixel format. Template uses `input_format` variable (captured before filter conversion) and compares `output_format.id` instead of comparing int to VideoFormat object.
+- **Platform circular import risk**: Extracted `isWindows`/`isLinux` into `electron/platformState.ts` leaf module (no Electron or project dependencies). Both `platform.ts` and `linuxRuntime.ts` import from it, eliminating cross-import temptation.
+- **runCommand() shell injection risk**: Removed `shell: true` from `runCommand()` and `nvidia-smi` probe calls. Arguments pass directly to `spawn()` without shell interpretation. `$ORIGIN` rpath arguments reverted from `\$ORIGIN` to `$ORIGIN`.
+- **Flatpak build dependencies**: Regenerated `generated-sources.json` (240 entries). Manually added `electron` and `onnxruntime-node` tarballs. Manifest now sets `ELECTRON_SKIP_BINARY_DOWNLOAD=1` and `ONNXRUNTIME_NODE_INSTALL=skip` so postinstall scripts exit early.
+- **Flatpak metainfo**: TensorRT is now described as optional/manual to match the manifest.
+- **Linux venv PYTHONPATH shadowing**: Deduplicated VapourSynth environment construction into `electron/vsEnvironment.ts:buildLinuxVsEnvironment()`. Venv's `vapoursynth` package is now uninstalled after `vsjetpack` installs, preventing ABI mismatches between venv Python bindings and system `libvapoursynth.so`.
+- **CPU baseline**: Changed vs-mlrt build flags from `-march=x86-64-v3` (AVX2/BMI/FMA required) to `-march=x86-64` (all x86_64 CPUs). Removes CachyOS repository defaults.
+- **tsconfig.electron.json**: Confirmed `"exclude": ["**/*.test.ts"]` already present; no test files leaked to production build.
+- **Linux command discovery**: Replaced `which` usage with PATH scanning via `resolveCommandPath()`, improving compatibility with minimal distros and sandboxes.
+- **Linux venv portability**: Venv creation now uses `--copies` when available, and site-packages detection scans `lib`/`lib64` dynamically instead of hardcoding Python minor versions.
+- **VapourSynth version requirement**: Linux setup now validates VapourSynth R76+ instead of accepting any `vspipe` that exits successfully.
+- **vsview fallback diagnostics**: Preview launch now logs whether it used the configured `vsview`, PATH-resolved `vsview`, or `python -m vsview` fallback.
 
 ## 0.16.1
 - Fix `Cannot read properties of null (reading 'execute')` crash when canceling or restarting an upscale during the frame count probe

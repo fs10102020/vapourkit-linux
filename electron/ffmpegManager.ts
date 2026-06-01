@@ -54,7 +54,7 @@ export class FFmpegManager {
 
     try {
       const axios = (await import('axios')).default;
-      const _7z = (await import('7zip-min')).default;
+      const _7z = (await import('./sevenZip')).default;
       
       // Download ffmpeg
       const archivePath = path.join(PATHS.APP_DATA, 'ffmpeg-git-full.7z');

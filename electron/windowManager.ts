@@ -52,29 +52,28 @@ export class WindowManager {
       this.managers = null;
     });
 
-    // Fix for Windows focus issues - force focus to webContents when window gains focus
-    // This prevents input fields from becoming unresponsive after dialogs or Alt+Tab
-    this.window.on('focus', () => {
-      if (this.window && !this.window.isDestroyed()) {
-        // Small delay to ensure the window is fully focused
-        setTimeout(() => {
-          if (this.window && !this.window.isDestroyed()) {
-            this.window.webContents.focus();
-          }
-        }, 100);
-      }
-    });
+    if (process.platform === 'win32') {
+      // Fix for Windows focus issues after dialogs or Alt+Tab.
+      this.window.on('focus', () => {
+        if (this.window && !this.window.isDestroyed()) {
+          setTimeout(() => {
+            if (this.window && !this.window.isDestroyed()) {
+              this.window.webContents.focus();
+            }
+          }, 100);
+        }
+      });
 
-    // Also handle the 'show' event for when window is shown after being hidden
-    this.window.on('show', () => {
-      if (this.window && !this.window.isDestroyed()) {
-        setTimeout(() => {
-          if (this.window && !this.window.isDestroyed()) {
-            this.window.webContents.focus();
-          }
-        }, 100);
-      }
-    });
+      this.window.on('show', () => {
+        if (this.window && !this.window.isDestroyed()) {
+          setTimeout(() => {
+            if (this.window && !this.window.isDestroyed()) {
+              this.window.webContents.focus();
+            }
+          }, 100);
+        }
+      });
+    }
 
     // Initialize managers
     this.managers = {

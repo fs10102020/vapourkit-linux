@@ -343,9 +343,9 @@ export function registerModelHandlers(mainWindow: BrowserWindow | null) {
         // If backend doesn't require TensorRT engines, skip conversion
         if (effectiveBackend !== 'tensorrt') {
           logger.model(`Backend is ${effectiveBackend} - skipping TensorRT conversion`);
-          sendModelImportProgress(mainWindow, 'complete', 100, 'Model imported successfully!', targetOnnxPath);
+          sendModelImportProgress(mainWindow, 'complete', 100, 'Model imported successfully!', targetOnnxPath, targetOnnxPath);
           activeModelExtractor = null;
-          
+
           return {
             success: true,
             onnxPath: targetOnnxPath

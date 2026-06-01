@@ -4,16 +4,34 @@ export type InferenceBackend =
   | 'onnxruntime-cuda'
   | 'onnxruntime-cpu';
 
+export interface BackendCapabilityDiagnostics {
+  onnxProviders?: string[];
+  onnxRuntimeVersion?: string;
+  onnxPluginPath?: string;
+  onnxBuildInfo?: string;
+  nvidiaGpuName?: string;
+  nvidiaCudaVersion?: string;
+  probeErrors?: {
+    onnxRuntime?: string;
+    tensorRt?: string;
+    bestSource?: string;
+  };
+}
+
 export interface BackendCapabilities {
   platform: NodeJS.Platform;
   cudaAvailable: boolean;
   nvidiaGpuAvailable: boolean;
+  amdGpuAvailable?: boolean;
+  intelGpuAvailable?: boolean;
+  rocmRuntimeAvailable?: boolean;
   directmlAvailable: boolean;
   tensorrtAvailable: boolean;
   onnxRuntimeCudaAvailable: boolean;
   onnxRuntimeCpuAvailable: boolean;
   supportedBackends: InferenceBackend[];
   recommendedBackend: InferenceBackend;
+  diagnostics?: BackendCapabilityDiagnostics;
 }
 
 export const BACKEND_LABELS: Record<InferenceBackend, string> = {
@@ -47,4 +65,28 @@ export function legacyDirectMLToBackend(useDirectML: boolean, onWindows: boolean
     return onWindows ? 'directml' : 'onnxruntime-cpu';
   }
   return 'tensorrt';
+}
+
+export function isInferenceBackend(value: unknown): value is InferenceBackend {
+  return value === 'directml' ||
+    value === 'tensorrt' ||
+    value === 'onnxruntime-cuda' ||
+    value === 'onnxruntime-cpu';
+}
+
+export function getDefaultBackend(caps: BackendCapabilities | null | undefined): InferenceBackend {
+  return caps?.recommendedBackend || 'onnxruntime-cpu';
+}
+
+export function validateBackend(
+  raw: unknown,
+  caps: BackendCapabilities | null | undefined
+): InferenceBackend {
+  if (isInferenceBackend(raw) && caps?.supportedBackends?.includes(raw)) {
+    return raw;
+  }
+  if (!caps && isInferenceBackend(raw)) {
+    return raw;
+  }
+  return getDefaultBackend(caps);
 }

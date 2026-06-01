@@ -9,12 +9,12 @@
     <p>
       VapourKit is an advanced graphical interface for VapourSynth-powered
       AI video upscaling and processing. It supports ONNX Runtime (CPU/CUDA)
-      and TensorRT backends for model inference when the corresponding
-      VapourSynth plugins are available, with an extensible filter chain system.
+      natively, with optional TensorRT support when the plugin is manually
+      installed, and an extensible filter chain system.
     </p>
     <p>Features:</p>
     <ul>
-      <li>AI model upscaling with ONNX Runtime and TensorRT</li>
+      <li>AI model upscaling with ONNX Runtime (TensorRT optional)</li>
       <li>Extensible VapourSynth filter chains</li>
       <li>Batch processing with queue management</li>
       <li>Side-by-side video comparison</li>
@@ -35,7 +35,7 @@
     </screenshot>
   </screenshots>
   <releases>
-    <release version="0.16.1" date="2026-05-28"/>
+    <release version="0.17.0" date="2026-06-01"/>
   </releases>
   <provides>
     <binary>vapourkit</binary>

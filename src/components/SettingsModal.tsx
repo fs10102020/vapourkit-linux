@@ -1,6 +1,6 @@
 import { memo, useState, useEffect } from 'react';
-import { Settings, Info, Terminal, FolderOpen, X, Package, FileCode, RotateCcw, Cpu, Play, ChevronDown, ChevronUp, HardDrive } from 'lucide-react';
-import type { InferenceBackend } from '../electron.d';
+import { Settings, Info, Terminal, FolderOpen, X, Package, FileCode, RotateCcw, Cpu, Play, ChevronDown, ChevronUp, HardDrive, AlertTriangle } from 'lucide-react';
+import type { InferenceBackend, BackendCapabilities } from '../electron.d';
 import { BACKEND_LABELS } from '../types/backend';
 
 interface SettingsModalProps {
@@ -19,6 +19,7 @@ interface SettingsModalProps {
   onResetDefaultOutputFolder: () => void;
   descriptiveNamingEnabled: boolean;
   onUpdateDescriptiveNamingEnabled: (enabled: boolean) => void;
+  backendCapabilities?: BackendCapabilities | null;
 }
 
 type Tab = 'general' | 'processing';
@@ -39,9 +40,11 @@ export const SettingsModal = memo<SettingsModalProps>(({
   onResetDefaultOutputFolder,
   descriptiveNamingEnabled,
   onUpdateDescriptiveNamingEnabled,
+  backendCapabilities,
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>('general');
   const [showVideoCompareOptions, setShowVideoCompareOptions] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -170,17 +173,17 @@ export const SettingsModal = memo<SettingsModalProps>(({
                           <p className="text-sm font-medium text-white">{BACKEND_LABELS[be]}</p>
                           {be === 'tensorrt' && (
                             <p className="text-xs text-gray-400 mt-1">
-                              Fastest performance on NVIDIA GPUs. Requires engine conversion.
+                              Fastest path on compatible NVIDIA setups. Requires engine conversion and TensorRT runtime.
                             </p>
                           )}
                           {be === 'onnxruntime-cuda' && (
                             <p className="text-xs text-gray-400 mt-1">
-                              ONNX Runtime with CUDA acceleration. Good NVIDIA GPU performance without engine conversion.
+                              ONNX Runtime with CUDA provider detected. Uses ONNX models directly without TensorRT engine conversion.
                             </p>
                           )}
                           {be === 'onnxruntime-cpu' && (
                             <p className="text-xs text-gray-400 mt-1">
-                              ONNX Runtime CPU execution. Works everywhere but is significantly slower.
+                              ONNX Runtime CPU execution. Works everywhere but significantly slower than GPU backends.
                             </p>
                           )}
                           {be === 'directml' && (
@@ -227,13 +230,83 @@ export const SettingsModal = memo<SettingsModalProps>(({
                     <div className="text-xs text-gray-300">
                       <p className="font-medium mb-2">Backend Comparison:</p>
                       <ul className="space-y-1.5 text-[11px] text-gray-400">
-                        <li><strong className="text-white">TensorRT:</strong> Fastest performance on NVIDIA GPUs, requires engine conversion</li>
-                        <li><strong className="text-white">ONNX Runtime CUDA:</strong> Good NVIDIA GPU performance, uses ONNX directly without engine conversion</li>
+                        <li><strong className="text-white">TensorRT:</strong> Fastest on compatible NVIDIA setups, requires engine conversion</li>
+                        <li><strong className="text-white">ONNX Runtime CUDA:</strong> CUDA provider detected, uses ONNX directly without engine conversion</li>
                         <li><strong className="text-white">ONNX Runtime CPU:</strong> Works on any system, significantly slower, uses ONNX directly</li>
                       </ul>
                     </div>
                   </div>
                 </div>
+
+                {/* Backend Diagnostics */}
+                {backendCapabilities?.diagnostics && (
+                  <div className="mt-4">
+                    <button
+                      onClick={() => setShowDiagnostics(!showDiagnostics)}
+                      className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"
+                    >
+                      {showDiagnostics ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      {showDiagnostics ? 'Hide' : 'Show'} backend diagnostics
+                    </button>
+
+                    {showDiagnostics && (
+                      <div className="mt-2 bg-dark-surface rounded-lg p-4 border border-gray-700 space-y-2">
+                        {(() => {
+                          const d = backendCapabilities.diagnostics!;
+                          const items: { label: string; value: string }[] = [];
+
+                          if (d.onnxProviders && d.onnxProviders.length > 0) {
+                            items.push({ label: 'ONNX providers', value: d.onnxProviders.join(', ') });
+                          }
+                          if (d.onnxRuntimeVersion) {
+                            items.push({ label: 'ONNX Runtime', value: d.onnxRuntimeVersion });
+                          }
+                          if (d.onnxPluginPath) {
+                            items.push({ label: 'ONNX plugin path', value: d.onnxPluginPath });
+                          }
+                          if (d.nvidiaGpuName) {
+                            let gpu = d.nvidiaGpuName;
+                            if (d.nvidiaCudaVersion) gpu += ` (CUDA ${d.nvidiaCudaVersion})`;
+                            items.push({ label: 'NVIDIA GPU', value: gpu });
+                          }
+
+                          const errors: { label: string; msg: string }[] = [];
+                          if (d.probeErrors?.onnxRuntime) errors.push({ label: 'ONNX Runtime', msg: d.probeErrors.onnxRuntime });
+                          if (d.probeErrors?.tensorRt) errors.push({ label: 'TensorRT', msg: d.probeErrors.tensorRt });
+                          if (d.probeErrors?.bestSource) errors.push({ label: 'BestSource', msg: d.probeErrors.bestSource });
+
+                          return items.length > 0 || errors.length > 0 ? (
+                            <div className="space-y-2">
+                              {items.length > 0 && (
+                                <div className="space-y-1">
+                                  {items.map((item) => (
+                                    <div key={item.label} className="flex gap-2 text-xs">
+                                      <span className="text-gray-500 shrink-0">{item.label}:</span>
+                                      <span className="text-gray-300 break-all">{item.value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {errors.length > 0 && (
+                                <div className="space-y-1 pt-1 border-t border-gray-700">
+                                  {errors.map((err) => (
+                                    <div key={err.label} className="flex gap-2 text-xs">
+                                      <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />
+                                      <span className="text-gray-500 shrink-0">{err.label}:</span>
+                                      <span className="text-amber-300 break-all">{err.msg}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-500">No diagnostic data available.</p>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Folders Grid - VapourSynth and Application Folders side by side */}

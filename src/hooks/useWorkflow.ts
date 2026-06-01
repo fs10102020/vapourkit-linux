@@ -1,9 +1,10 @@
 // src/hooks/useWorkflow.ts
 import { useState, useCallback } from 'react';
-import type { Filter, FilterTemplate, WorkflowData, SegmentSelection, ColorimetrySettings, InferenceBackend } from '../electron.d';
+import type { Filter, FilterTemplate, WorkflowData, SegmentSelection, ColorimetrySettings, InferenceBackend, BackendCapabilities } from '../electron.d';
 import { getErrorMessage } from '../types/errors';
 import { getPortableModelName, resolvePortableModelName } from '../utils/modelUtils';
 import { notify } from '../utils/notifications';
+import { validateBackend } from '../types/backend';
 
 interface ImportWorkflowModalState {
   isOpen: boolean;
@@ -51,6 +52,7 @@ interface UseWorkflowProps {
   numStreams?: number;
   segment?: SegmentSelection;
   colorimetry?: ColorimetrySettings;
+  backendCapabilities?: BackendCapabilities | null;
   setFfmpegArgs?: (args: string) => void;
   setProcessingFormat?: (format: string) => void;
   setOutputFormat?: (format: string) => void;
@@ -92,6 +94,7 @@ export function useWorkflow({
   numStreams,
   segment,
   colorimetry,
+  backendCapabilities,
   setFfmpegArgs,
   setProcessingFormat,
   setOutputFormat,
@@ -176,17 +179,13 @@ export function useWorkflow({
       setWorkflowState(prev => ({ ...prev, currentWorkflow: displayName }));
 
       // Normalize workflow backend BEFORE resolving models
-      const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform);
-      const currentBackend: InferenceBackend = backend || (isWindows ? 'directml' : 'onnxruntime-cpu');
+      const currentBackend: InferenceBackend = validateBackend(backend, backendCapabilities);
       let targetBackend: InferenceBackend = currentBackend;
       if (workflow.encodingSettings?.backend) {
         const raw = workflow.encodingSettings.backend;
-        // Basic platform validation
-        if (raw === 'directml' && !isWindows) {
-          targetBackend = 'onnxruntime-cpu';
+        targetBackend = validateBackend(raw, backendCapabilities);
+        if (targetBackend !== raw) {
           addConsoleLog(`Workflow backend '${raw}' is unsupported on this platform; remapped to '${targetBackend}'`);
-        } else {
-          targetBackend = raw;
         }
       }
 
@@ -287,6 +286,7 @@ export function useWorkflow({
     setSegment,
     handleColorimetryChange,
     backend,
+    backendCapabilities,
   ]);
 
   /**

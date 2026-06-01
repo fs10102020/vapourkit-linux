@@ -3,14 +3,32 @@ import * as path from 'path';
 import * as os from 'os';
 import { logger } from './logger';
 import { PATHS } from './constants';
-import { isLinux, isWindows, platformSpawnOptions } from './platform';
-import { getLinuxVsPluginSearchPaths } from './linuxRuntime';
+import { isLinux, isWindows, platformSpawnOptions, resolveCommandPath } from './platform';
+import { buildLinuxVsEnvironment } from './vsEnvironment';
+import { detectGpuCapabilities } from './gpuDetection';
 
 export interface BackendProbeResult {
   /** Whether the core plugin is loadable by vspipe */
   pluginLoadable: boolean;
   /** Optional error message from the probe */
   error?: string;
+}
+
+export interface OnnxRuntimeProbeResult extends BackendProbeResult {
+  providers: string[];
+  onnxRuntimeVersion?: string;
+  buildInfo?: string;
+  pluginPath?: string;
+}
+
+export function parseOnnxRuntimeVersionOutput(output: string): Omit<OnnxRuntimeProbeResult, 'pluginLoadable'> {
+  const parsed = JSON.parse(output.trim());
+  return {
+    providers: Array.isArray(parsed.providers) ? parsed.providers.filter((p: unknown) => typeof p === 'string') : [],
+    onnxRuntimeVersion: typeof parsed.onnxRuntimeVersion === 'string' ? parsed.onnxRuntimeVersion : undefined,
+    buildInfo: typeof parsed.buildInfo === 'string' ? parsed.buildInfo : undefined,
+    pluginPath: typeof parsed.pluginPath === 'string' ? parsed.pluginPath : undefined,
+  };
 }
 
 /**
@@ -43,7 +61,7 @@ export async function probeVapourSynthPlugin(
 
   return new Promise((resolve) => {
     let settled = false;
-    let timeout: NodeJS.Timeout;
+    let timeout: NodeJS.Timeout | undefined;
     const finish = (result: BackendProbeResult) => {
       if (settled) return;
       settled = true;
@@ -52,80 +70,51 @@ export async function probeVapourSynthPlugin(
       resolve(result);
     };
 
-    const env = { ...process.env };
-    if (isLinux) {
-      // Ensure vspipe can find Python packages installed in our venv
-      const pythonDir = path.dirname(py);
-      env['PATH'] = `${pythonDir}${path.delimiter}${env['PATH'] || ''}`;
+    const env = isLinux ? buildLinuxVsEnvironment(py) : { ...process.env };
 
-      // Merge plugin paths so system vspipe sees app-data plugins
-      const pluginDirs = getLinuxVsPluginSearchPaths().join(path.delimiter);
-      env['VS_PLUGINS_PATH'] = pluginDirs;
-      env['VAPOURSYNTH_PLUGINS_PATH'] = pluginDirs;
+    resolveCommandPath(vspipe, env).then((resolvedVspipe) => {
+      if (!resolvedVspipe) {
+        finish({ pluginLoadable: false, error: `vspipe not found: ${vspipe}` });
+        return;
+      }
 
-      // Expose venv site-packages for Python imports
-      const venvRoot = path.dirname(pythonDir);
-      const sitePackagesCandidates = [
-        path.join(venvRoot, 'lib', 'python3.13', 'site-packages'),
-        path.join(venvRoot, 'lib', 'python3.12', 'site-packages'),
-        path.join(venvRoot, 'lib', 'python3.11', 'site-packages'),
-        path.join(venvRoot, 'lib', 'python3.10', 'site-packages'),
-        path.join(venvRoot, 'lib', 'python3.9', 'site-packages'),
-        path.join(venvRoot, 'lib', 'python3', 'site-packages'),
-      ];
-      const sitePackages = sitePackagesCandidates.find(sp => {
-        try {
-          return fs.existsSync(sp);
-        } catch {
-          return false;
+      const proc = spawn(resolvedVspipe, [tmpFile, '-'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env,
+        ...platformSpawnOptions(),
+      });
+
+      let stderr = '';
+
+      proc.stdout?.resume();
+      if (proc.stderr) {
+        proc.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+      }
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          finish({ pluginLoadable: true });
+        } else {
+          const err = stderr.trim() || `vspipe exited with code ${code}`;
+          finish({ pluginLoadable: false, error: err });
         }
       });
-      if (sitePackages) {
-        env['PYTHONPATH'] = env['PYTHONPATH']
-          ? `${sitePackages}${path.delimiter}${env['PYTHONPATH']}`
-          : sitePackages;
-      }
-      if (env['PYTHONHOME']) {
-        delete env['PYTHONHOME'];
-      }
-    }
 
-    const proc = spawn(vspipe, [tmpFile, '-'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env,
-      ...platformSpawnOptions(),
-    });
-
-    let stderr = '';
-
-    proc.stdout?.resume();
-    if (proc.stderr) {
-      proc.stderr.on('data', (data) => {
-        stderr += data.toString();
+      proc.on('error', (err) => {
+        finish({ pluginLoadable: false, error: err.message });
       });
-    }
 
-    proc.on('close', (code) => {
-      if (code === 0) {
-        finish({ pluginLoadable: true });
-      } else {
-        const err = stderr.trim() || `vspipe exited with code ${code}`;
-        finish({ pluginLoadable: false, error: err });
-      }
-    });
-
-    proc.on('error', (err) => {
-      finish({ pluginLoadable: false, error: err.message });
-    });
-
-    timeout = setTimeout(() => {
-      try {
-        proc.kill();
-      } catch {
-        // ignore
-      }
-      finish({ pluginLoadable: false, error: 'Probe timed out' });
-    }, 10000);
+      timeout = setTimeout(() => {
+        try {
+          proc.kill();
+        } catch {
+          // ignore
+        }
+        finish({ pluginLoadable: false, error: 'Probe timed out' });
+      }, 10000);
+    }).catch((error) => finish({ pluginLoadable: false, error: error instanceof Error ? error.message : String(error) }));
   });
 }
 
@@ -142,6 +131,90 @@ export async function probeOnnxRuntime(pythonPath?: string): Promise<BackendProb
   const fs = require('fs');
   const dllPath = path.join(PATHS.PLUGINS, 'vsort.dll');
   return { pluginLoadable: fs.existsSync(dllPath) };
+}
+
+export async function probeOnnxRuntimeCapabilities(pythonPath?: string): Promise<OnnxRuntimeProbeResult> {
+  if (!isLinux) {
+    const probe = await probeOnnxRuntime(pythonPath);
+    return { ...probe, providers: [] };
+  }
+
+  const py = pythonPath || PATHS.PYTHON;
+  const script = [
+    'import json',
+    'import vapoursynth as vs',
+    'core = vs.core',
+    'version = core.ort.Version()',
+    'def normalize(value):',
+    '    if value is None:',
+    '        return None',
+    '    if isinstance(value, bytes):',
+    '        return value.decode("utf-8", "replace")',
+    '    if isinstance(value, (list, tuple)):',
+    '        return [normalize(v) for v in value]',
+    '    return str(value)',
+    'providers = normalize(version.get("providers", []))',
+    'if providers is None:',
+    '    providers = []',
+    'elif isinstance(providers, str):',
+    '    providers = [providers]',
+    'print(json.dumps({',
+    '    "providers": providers,',
+    '    "onnxRuntimeVersion": normalize(version.get("onnxruntime_version")),',
+    '    "buildInfo": normalize(version.get("onnxruntime_build_info")),',
+    '    "pluginPath": normalize(version.get("path")),',
+    '}))',
+    '',
+  ].join('\n');
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeout: NodeJS.Timeout | undefined;
+    const finish = (result: OnnxRuntimeProbeResult) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      resolve(result);
+    };
+
+    const probeEnv = path.isAbsolute(py) ? buildLinuxVsEnvironment(py) : process.env;
+
+    resolveCommandPath(py, probeEnv).then((resolvedPython) => {
+      if (!resolvedPython) {
+        finish({ pluginLoadable: false, providers: [], error: `Python not found: ${py}` });
+        return;
+      }
+
+      const proc = spawn(resolvedPython, ['-c', script], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: buildLinuxVsEnvironment(resolvedPython),
+        ...platformSpawnOptions(),
+      });
+
+      let stdout = '';
+      let stderr = '';
+      proc.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+      proc.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+      proc.on('close', (code) => {
+        if (code !== 0) {
+          finish({ pluginLoadable: false, providers: [], error: stderr.trim() || `python exited with code ${code}` });
+          return;
+        }
+        try {
+          finish({ pluginLoadable: true, ...parseOnnxRuntimeVersionOutput(stdout) });
+        } catch (error) {
+          finish({ pluginLoadable: false, providers: [], error: `Could not parse core.ort.Version() output: ${error}` });
+        }
+      });
+
+      proc.on('error', (err) => finish({ pluginLoadable: false, providers: [], error: err.message }));
+      timeout = setTimeout(() => {
+        try { proc.kill(); } catch {}
+        finish({ pluginLoadable: false, providers: [], error: 'ONNX Runtime version probe timed out' });
+      }, 10000);
+    }).catch((error) => finish({ pluginLoadable: false, providers: [], error: error instanceof Error ? error.message : String(error) }));
+  });
 }
 
 /**
@@ -171,6 +244,9 @@ export async function probeBestSource(pythonPath?: string): Promise<BackendProbe
 export interface RuntimeCapabilityStatus {
   cudaAvailable: boolean;
   nvidiaGpuAvailable: boolean;
+  amdGpuAvailable: boolean;
+  intelGpuAvailable: boolean;
+  rocmRuntimeAvailable: boolean;
   directmlAvailable: boolean;
   /** core.trt loadable (not just trtexec on PATH) */
   tensorrtRuntimeAvailable: boolean;
@@ -184,6 +260,18 @@ export interface RuntimeCapabilityStatus {
   bestSourceAvailable: boolean;
   supportedBackends: ('directml' | 'tensorrt' | 'onnxruntime-cuda' | 'onnxruntime-cpu')[];
   recommendedBackend: 'directml' | 'tensorrt' | 'onnxruntime-cuda' | 'onnxruntime-cpu';
+  /** Diagnostic details surfaced to the renderer */
+  onnxProviders: string[];
+  onnxRuntimeVersion?: string;
+  onnxPluginPath?: string;
+  onnxBuildInfo?: string;
+  nvidiaGpuName?: string;
+  nvidiaCudaVersion?: string;
+  probeErrors: {
+    onnxRuntime?: string;
+    tensorRt?: string;
+    bestSource?: string;
+  };
 }
 
 /**
@@ -250,8 +338,11 @@ export function resolveModelPathForBackend(
 export async function getRuntimeCapabilities(): Promise<RuntimeCapabilityStatus> {
   const { detectCudaSupport } = require('./utils');
   const hasCuda = await detectCudaSupport();
+  const gpuCaps = isLinux
+    ? await detectGpuCapabilities()
+    : { nvidia: { available: hasCuda, name: undefined, cudaVersion: undefined }, amd: { available: false, rocmRuntimeAvailable: false }, intel: { available: false } };
 
-  const onnxProbe = await probeOnnxRuntime();
+  const onnxProbe = await probeOnnxRuntimeCapabilities();
   const trtProbe = await probeTensorRT();
   const bsProbe = await probeBestSource();
 
@@ -261,37 +352,58 @@ export async function getRuntimeCapabilities(): Promise<RuntimeCapabilityStatus>
   const onnxRuntimeAvailable = onnxProbe.pluginLoadable;
   const directmlAvailable = isWindows && onnxRuntimeAvailable;
   const bestSourceAvailable = bsProbe.pluginLoadable;
+  const onnxProviders = new Set(onnxProbe.providers.map(provider => provider.toUpperCase()));
+  const onnxRuntimeCudaAvailable = onnxRuntimeAvailable && hasCuda && (!isLinux || onnxProviders.has('CUDA'));
 
   const supportedBackends: RuntimeCapabilityStatus['supportedBackends'] = [];
   if (directmlAvailable) supportedBackends.push('directml');
   if (tensorrtRuntimeAvailable && builderAvailable) supportedBackends.push('tensorrt');
-  if (onnxRuntimeAvailable && hasCuda) supportedBackends.push('onnxruntime-cuda');
+  if (onnxRuntimeCudaAvailable) supportedBackends.push('onnxruntime-cuda');
   if (onnxRuntimeAvailable) supportedBackends.push('onnxruntime-cpu');
 
   let recommendedBackend: RuntimeCapabilityStatus['recommendedBackend'];
   if (isLinux) {
     recommendedBackend = tensorrtRuntimeAvailable && builderAvailable
       ? 'tensorrt'
-      : (onnxRuntimeAvailable && hasCuda ? 'onnxruntime-cuda' : 'onnxruntime-cpu');
+      : (onnxRuntimeCudaAvailable ? 'onnxruntime-cuda' : 'onnxruntime-cpu');
   } else {
     recommendedBackend = tensorrtRuntimeAvailable && builderAvailable
       ? 'tensorrt'
       : (directmlAvailable ? 'directml' : 'onnxruntime-cpu');
   }
 
-  logger.info(`Runtime capabilities: CUDA=${hasCuda}, TRT=${tensorrtRuntimeAvailable}, ONNX=${onnxRuntimeAvailable}, BS=${bestSourceAvailable}, trtexec=${builderAvailable}`);
+  logger.info(`Runtime capabilities: CUDA=${hasCuda}, AMD=${gpuCaps.amd.available}, ROCm=${gpuCaps.amd.rocmRuntimeAvailable}, TRT=${tensorrtRuntimeAvailable}, ONNX=${onnxRuntimeAvailable}, ONNX providers=${onnxProbe.providers.join(',') || 'none'}, BS=${bestSourceAvailable}, trtexec=${builderAvailable}`);
+  if (onnxProbe.onnxRuntimeVersion) logger.info(`ONNX Runtime version: ${onnxProbe.onnxRuntimeVersion}`);
+  if (onnxProbe.pluginPath) logger.info(`ONNX Runtime plugin path: ${onnxProbe.pluginPath}`);
+  if (onnxProbe.error) logger.warn(`ONNX Runtime probe error: ${onnxProbe.error}`);
+  if (trtProbe.error) logger.warn(`TensorRT probe error: ${trtProbe.error}`);
+  if (bsProbe.error) logger.warn(`BestSource probe error: ${bsProbe.error}`);
 
   return {
     cudaAvailable: hasCuda,
-    nvidiaGpuAvailable: hasCuda,
+    nvidiaGpuAvailable: gpuCaps.nvidia.available,
+    amdGpuAvailable: gpuCaps.amd.available,
+    intelGpuAvailable: gpuCaps.intel.available,
+    rocmRuntimeAvailable: gpuCaps.amd.rocmRuntimeAvailable,
     directmlAvailable,
     tensorrtRuntimeAvailable,
     tensorrtBuilderAvailable: builderAvailable,
     onnxRuntimeAvailable,
-    onnxRuntimeCudaAvailable: onnxRuntimeAvailable && hasCuda,
+    onnxRuntimeCudaAvailable,
     onnxRuntimeCpuAvailable: onnxRuntimeAvailable,
     bestSourceAvailable,
     supportedBackends,
     recommendedBackend,
+    onnxProviders: onnxProbe.providers,
+    onnxRuntimeVersion: onnxProbe.onnxRuntimeVersion,
+    onnxPluginPath: onnxProbe.pluginPath,
+    onnxBuildInfo: onnxProbe.buildInfo,
+    nvidiaGpuName: gpuCaps.nvidia.name,
+    nvidiaCudaVersion: gpuCaps.nvidia.cudaVersion,
+    probeErrors: {
+      onnxRuntime: onnxProbe.error,
+      tensorRt: trtProbe.error,
+      bestSource: bsProbe.error,
+    },
   };
 }

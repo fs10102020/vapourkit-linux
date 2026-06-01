@@ -116,8 +116,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFfmpegArgs: () => ipcRenderer.invoke('get-ffmpeg-args'),
   setFfmpegArgs: (args: string) => ipcRenderer.invoke('set-ffmpeg-args', args),
   getDefaultFfmpegArgs: () => ipcRenderer.invoke('get-default-ffmpeg-args'),
-  getVideoFilter: () => ipcRenderer.invoke('get-video-filter'),
-  setVideoFilter: (filter: string) => ipcRenderer.invoke('set-video-filter', filter),
   
   // Output format
   getOutputFormat: () => ipcRenderer.invoke('get-output-format'),
@@ -143,6 +141,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Encoding settings panel state
   getEncodingSettingsExpanded: () => ipcRenderer.invoke('get-encoding-settings-expanded'),
   setEncodingSettingsExpanded: (expanded: boolean) => ipcRenderer.invoke('set-encoding-settings-expanded', expanded),
+
+  // ONNX Runtime source configuration
+  getOnnxRuntimeConfig: () => ipcRenderer.invoke('get-onnx-runtime-config'),
+  setOnnxRuntimeConfig: (config: any) => ipcRenderer.invoke('set-onnx-runtime-config', config),
 
   // Panel sizes
   getPanelSizes: () => ipcRenderer.invoke('get-panel-sizes'),

@@ -5,9 +5,9 @@ import axios from 'axios';
 import { BrowserWindow } from 'electron';
 import { PATHS, VS_MLRT_VERSION } from './constants';
 import { logger } from './logger';
-import { libName, exeName, isWindows, isLinux } from './platform';
+import { libName, isWindows, isLinux } from './platform';
 import { findLinuxPlugin } from './linuxRuntime';
-import * as _7z from '7zip-min';
+import * as _7z from './sevenZip';
 
 export type VsMlrtComponent = 'onnx-runtime' | 'tensorrt';
 
@@ -82,7 +82,7 @@ export class VsMlrtManager {
       case 'onnx-runtime':
         return path.join(PATHS.PLUGINS, libName('vsort'));
       case 'tensorrt':
-        return path.join(PATHS.MLRT_PLUGIN, exeName('trtexec'));
+        return PATHS.TRTEXEC;
     }
   }
 

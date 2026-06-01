@@ -6,6 +6,7 @@ import * as os from 'os';
 import { PATHS } from './constants';
 import { configManager } from './configManager';
 import { logger } from './logger';
+import { resolveModelPathForBackend } from './backendUtils';
 
 export type ModelType = 'vsr' | 'image';
 
@@ -51,37 +52,6 @@ export interface ScriptConfig {
   validationMode?: boolean; // If true, only process first 5 seconds for validation
   sourceFps?: number; // Source video FPS for validation frame calculation
   generatePreviewOutputs?: boolean; // If true, add output nodes after each filter for vs-view
-}
-
-/**
- * Returns the correct model path string for script generation given a backend.
- * ONNX backends refuse engine paths; TensorRT prefers engines.
- */
-function resolveModelPathForBackend(
-  modelPath: string,
-  backend: string
-): string {
-  const isEngine = modelPath.toLowerCase().endsWith('.engine');
-  const isOnnx = modelPath.toLowerCase().endsWith('.onnx');
-
-  if (backend === 'tensorrt') {
-    return modelPath;
-  }
-
-  // ONNX backends
-  if (isOnnx) {
-    return modelPath;
-  }
-  if (isEngine) {
-    // Derive the ONNX path from the engine path correctly:
-    // e.g. model_fp16_fp16.engine -> model_fp16.onnx (strip one precision suffix)
-    let onnxPath = modelPath.replace(/\.engine$/i, '.onnx');
-    // Strip the extra _fp16 that engine builds add
-    onnxPath = onnxPath.replace(/_fp(16|32)(?=_fp(16|32)\.onnx$)/i, '');
-    return onnxPath;
-  }
-
-  return modelPath;
 }
 
 export class VapourSynthScriptGenerator {

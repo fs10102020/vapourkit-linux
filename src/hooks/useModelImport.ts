@@ -497,8 +497,8 @@ export const useModelImport = (
         setIsImporting(false);
         setShowImportModal(false);
         setShowAutoBuildModal(false);
-        // Pass the enginePath to the completion handler
-        onImportComplete(progress.enginePath);
+        // Pass the model path to the completion handler (modelPath for non-TensorRT, enginePath for TensorRT)
+        onImportComplete(progress.modelPath || progress.enginePath);
         resetImportForm();
         notify.success('Model Built', 'Model built successfully!');
       } else if (progress.type === 'error') {
@@ -537,8 +537,8 @@ export const useModelImport = (
         completionGuardRef.current = true;
         setIsImporting(false);
         setShowImportModal(false);
-        // Pass the enginePath to the completion handler
-        onImportComplete(progress.enginePath);
+        // Pass the model path to the completion handler (modelPath for non-TensorRT, enginePath for TensorRT)
+        onImportComplete(progress.modelPath || progress.enginePath);
         resetImportForm();
         notify.success('Model Imported', 'Model imported successfully!');
       } else if (progress.type === 'error') {

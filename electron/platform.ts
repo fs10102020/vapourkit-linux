@@ -1,12 +1,11 @@
 import * as path from 'path';
-import * as os from 'os';
 import { app } from 'electron';
-import { exec, execSync, ChildProcess } from 'child_process';
+import { exec, ChildProcess } from 'child_process';
 import { SpawnOptions } from 'child_process';
 import * as fs from 'fs';
 
-export const isWindows = process.platform === 'win32';
-export const isLinux = process.platform === 'linux';
+import { isWindows, isLinux } from './platformState';
+export { isWindows, isLinux };
 
 export function exeName(name: string): string {
   return isWindows ? `${name}.exe` : name;
@@ -28,7 +27,11 @@ export function sitePackagesDir(pythonPrefix: string): string {
   if (isWindows) {
     return path.join(pythonPrefix, 'Lib', 'site-packages');
   }
-  const pyVersion = os.platform();
+  const candidates = ['python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3.9', 'python3'];
+  for (const pyDir of candidates) {
+    const dir = path.join(pythonPrefix, 'lib', pyDir, 'site-packages');
+    if (fs.existsSync(dir)) return dir;
+  }
   return path.join(pythonPrefix, 'lib', 'python3', 'site-packages');
 }
 
@@ -137,17 +140,43 @@ export function executablePath(fullPath: string, binaryName: string): string {
 /** Checks whether a resolved executable (from executablePath) is runnable. */
 export function executableExists(resolvedPath: string): boolean {
   if (isLinux && !path.isAbsolute(resolvedPath)) {
-    return whichSync(resolvedPath) !== null;
+    return resolveCommandPathSync(resolvedPath) !== null;
   }
   return fs.existsSync(resolvedPath);
 }
 
-function whichSync(cmd: string): string | null {
+export function resolveCommandPathSync(command: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  if (path.isAbsolute(command)) {
+    return isExecutable(command) ? command : null;
+  }
+
+  const pathEnv = env.PATH || '';
+  const extensions = isWindows
+    ? (env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';').filter(Boolean)
+    : [''];
+
+  for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
+    for (const extension of extensions) {
+      const candidate = path.join(dir, isWindows && !path.extname(command) ? `${command}${extension}` : command);
+      if (isExecutable(candidate)) return candidate;
+    }
+  }
+
+  return null;
+}
+
+export async function resolveCommandPath(command: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+  return resolveCommandPathSync(command, env);
+}
+
+function isExecutable(filePath: string): boolean {
   try {
-    const result = execSync(`command -v ${cmd}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-    const trimmed = result.trim();
-    return trimmed ? trimmed : null;
+    if (isWindows) {
+      return fs.existsSync(filePath);
+    }
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }

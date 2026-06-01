@@ -325,7 +325,7 @@ export const OutputSettingsPanel = memo<OutputSettingsPanelProps>(({
                 <option value="vs.YUV444P8" disabled={config.codec === 'prores'}>YUV 4:4:4 8-Bit</option>
                 <option value="vs.YUV444P10">YUV 4:4:4 10-Bit</option>
                 <option value="vs.RGB24" disabled={config.codec === 'prores'}>RGB 8-Bit</option>
-                <option value="match_input" disabled={config.codec === 'prores'}>Same as Input (Not Recommended)</option>
+                <option value="match_input" disabled={config.codec === 'prores'}>Same as Input (Experimental)</option>
               </select>
             </div>
 

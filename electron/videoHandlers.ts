@@ -19,6 +19,7 @@ import { FFmpegManager } from './ffmpegManager';
 import { VsViewManager } from './vsViewManager';
 import { QueueItemLogger } from './queueItemLogger';
 import { executableExists, isLinux } from './platform';
+import { getRuntimeCapabilities, normalizeBackend } from './backendUtils';
 
 let upscaleExecutor: UpscaleExecutor | null = null;
 let previewExecutor: UpscaleExecutor | null = null;
@@ -144,11 +145,12 @@ export function registerVideoHandlers(
         infoExecutor = null;
       }
       
+        const effectiveBackend = await validateProcessingBackend(backend);
         const config = createScriptConfig(
           videoPath,
           modelPath,
           dependencyManager,
-          backend,
+          effectiveBackend,
           upscalingEnabled,
         filters,
         numStreams,
@@ -278,9 +280,20 @@ export function registerVideoHandlers(
       qlog('Starting processing');
       qlog(`Input: ${videoPath}`);
       qlog(`Upscaling: ${isUpscaling ? 'enabled' : 'disabled'}`);
+      let effectiveBackend: string;
+      try {
+        effectiveBackend = await validateProcessingBackend(backend);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        qerror(`Backend validation failed: ${errorMsg}`);
+        itemLogger.close();
+        activeQueueItemLogger = null;
+        return { success: false, error: errorMsg };
+      }
+
       if (isUpscaling && modelPath) {
         qlog(`Model: ${modelPath}`);
-        qlog(`Backend: ${backend || (isLinux ? 'onnxruntime-cpu' : 'tensorrt')}`);
+        qlog(`Backend: ${effectiveBackend}`);
       }
       qlog(`Output: ${benchmarkMode ? '(benchmark - null output)' : outputPath}`);
       if (benchmarkMode) qlog('BENCHMARK MODE: Output will be discarded');
@@ -305,11 +318,11 @@ export function registerVideoHandlers(
         qlog('Generating VapourSynth script');
         
         const config = createScriptConfig(
-          videoPath,
-          modelPath,
-          dependencyManager,
-          backend,
-          upscalingEnabled,
+            videoPath,
+            modelPath,
+            dependencyManager,
+            effectiveBackend,
+            upscalingEnabled,
           filters,
           numStreams,
           segment
@@ -483,11 +496,12 @@ export function registerVideoHandlers(
       // Generate VapourSynth script with the current workflow
       const metadata = await extractVideoMetadata(videoPath);
       
+      const effectiveBackend = await validateProcessingBackend(backend);
       const scriptConfig = {
         inputVideo: videoPath,
         enginePath: PATHS.MLRT_PLUGIN,
         pluginsPath: PATHS.PLUGINS,
-        backend: backend || (isLinux ? 'onnxruntime-cpu' : 'tensorrt'),
+        backend: effectiveBackend,
         useFp32: modelPath ? configManager.isModelFp32(modelPath) : false,
         modelType: modelPath ? configManager.getModelType(modelPath) : 'image' as const,
         upscalingEnabled: upscalingEnabled || false,
@@ -561,11 +575,12 @@ export function registerVideoHandlers(
           endFrame: endFrame ?? -1
         };
         
+        const effectiveBackend = await validateProcessingBackend(backend);
         const config = createScriptConfig(
           videoPath,
           modelPath,
           dependencyManager,
-          backend,
+          effectiveBackend,
           upscalingEnabled,
           filters,
           numStreams,
@@ -812,6 +827,15 @@ export function registerVideoHandlers(
   });
 }
 
+async function validateProcessingBackend(requested?: string): Promise<string> {
+  const caps = await getRuntimeCapabilities();
+  const effective = normalizeBackend(requested, caps.supportedBackends);
+  if (requested && requested !== effective) {
+    logger.warn(`Requested backend "${requested}" is unsupported; using "${effective}" instead`);
+  }
+  return effective;
+}
+
 /**
  * Helper to create script configuration
  */
@@ -839,7 +863,7 @@ function createScriptConfig(
 
   const colorimetrySettings = configManager.getColorimetrySettings();
   const processingFormat = configManager.getProcessingFormat();
-  const outputFormat = processingFormat === 'match_input' ? 'original_clip.format.id' : processingFormat;
+  const outputFormat = processingFormat === 'match_input' ? 'input_format' : processingFormat;
   
   return {
     inputVideo: videoPath,

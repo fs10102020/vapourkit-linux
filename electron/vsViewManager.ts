@@ -4,7 +4,7 @@ import { spawn } from 'child_process';
 import { PATHS } from './constants';
 import { logger } from './logger';
 import { setupVSEnvironment } from './utils';
-import { resolveVsviewPath, isLinux, executableExists } from './platform';
+import { resolveVsviewPath, isLinux, executableExists, resolveCommandPath } from './platform';
 
 /**
  * Manager for vs-view - VapourSynth script previewer tool
@@ -23,7 +23,8 @@ export class VsViewManager {
       const vsCwd = isLinux ? PATHS.APP_DATA : PATHS.VS;
       
       // Check if vsview is installed by running pip list
-      const child = spawn(PATHS.PYTHON, ['-m', 'pip', 'list'], {
+      const python = isLinux ? PATHS.VENV_PYTHON : PATHS.PYTHON;
+      const child = spawn(python, ['-m', 'pip', 'list'], {
         env,
         cwd: vsCwd
       });
@@ -66,7 +67,8 @@ export class VsViewManager {
       const vsCwd = isLinux ? PATHS.APP_DATA : PATHS.VS;
       
       // Install vsview==0.5.0
-      const child = spawn(PATHS.PYTHON, ['-m', 'pip', 'install', 'vsview==0.5.0'], {
+      const python = isLinux ? PATHS.VENV_PYTHON : PATHS.PYTHON;
+      const child = spawn(python, ['-m', 'pip', 'install', 'vsview==0.5.0'], {
         env,
         cwd: vsCwd,
         stdio: 'pipe'
@@ -115,8 +117,9 @@ export class VsViewManager {
   static async migrateFromVsPreview(): Promise<void> {
     try {
       const env = setupVSEnvironment();
+      const python = isLinux ? PATHS.VENV_PYTHON : PATHS.PYTHON;
 
-      const listChild = spawn(PATHS.PYTHON, ['-m', 'pip', 'list'], {
+      const listChild = spawn(python, ['-m', 'pip', 'list'], {
         env,
         cwd: isLinux ? PATHS.APP_DATA : PATHS.VS
       });
@@ -134,7 +137,7 @@ export class VsViewManager {
 
       logger.info('Detected vs-preview from a prior build, uninstalling...');
 
-      const uninstallChild = spawn(PATHS.PYTHON, ['-m', 'pip', 'uninstall', '-y', 'vspreview'], {
+      const uninstallChild = spawn(python, ['-m', 'pip', 'uninstall', '-y', 'vspreview'], {
         env,
         cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,
         stdio: 'pipe'
@@ -199,17 +202,35 @@ export class VsViewManager {
       // Setup environment for VapourSynth
       const env = setupVSEnvironment();
 
-      const vsviewBase = isLinux ? PATHS.PYTHON_VENV : PATHS.VS;
-      const vsviewExe = resolveVsviewPath(vsviewBase);
-      if (!fs.existsSync(vsviewExe)) {
-        const error = `vs-view executable not found at: ${vsviewExe}. The pip install may not have completed.`;
+      const configuredVsview = isLinux ? PATHS.VENV_VSVIEW : resolveVsviewPath(PATHS.VS);
+      logger.info(`Checking configured vsview path: ${configuredVsview}`);
+
+      let resolvedVsview: string | null = null;
+      if (fs.existsSync(configuredVsview)) {
+        resolvedVsview = configuredVsview;
+        logger.info(`Using configured vsview executable: ${configuredVsview}`);
+      } else {
+        logger.info('Configured vsview not found, trying vsview from PATH using VapourSynth environment');
+        resolvedVsview = await resolveCommandPath('vsview', env);
+        if (resolvedVsview) {
+          logger.info(`Using PATH vsview executable: ${resolvedVsview}`);
+        } else {
+          logger.info(`vsview executable not found, falling back to Python module launch: ${isLinux ? PATHS.VENV_PYTHON : PATHS.PYTHON} -m vsview`);
+        }
+      }
+
+      const command = resolvedVsview || (isLinux ? PATHS.VENV_PYTHON : PATHS.PYTHON);
+      const args = resolvedVsview ? [scriptPath] : ['-m', 'vsview', scriptPath];
+
+      if (!resolvedVsview && !executableExists(command)) {
+        const error = `vs-view executable not found at: ${configuredVsview}, and Python fallback is unavailable.`;
         logger.error(error);
         return { success: false, error };
       }
 
-      logger.info(`Launching: ${vsviewExe} ${scriptPath}`);
+      logger.info(`Launching: ${command} ${args.join(' ')}`);
 
-      const child = spawn(vsviewExe, [scriptPath], {
+      const child = spawn(command, args, {
         detached: true,
         stdio: 'pipe',
         cwd: isLinux ? PATHS.APP_DATA : PATHS.VS,

@@ -1,15 +1,17 @@
 // src/hooks/useQueueStore.ts - Consolidated queue data layer (merged from useQueueState + useQueueManagement)
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { QueueItem, Filter, SegmentSelection, InferenceBackend } from '../electron.d';
+import type { QueueItem, Filter, SegmentSelection, InferenceBackend, BackendCapabilities } from '../electron.d';
 import { generateOutputSuffix } from '../utils/generateOutputSuffix';
+import { validateBackend } from '../types/backend';
 
 interface UseQueueStoreProps {
   onLog: (message: string) => void;
   descriptiveNamingEnabled?: boolean;
+  backendCapabilities?: BackendCapabilities | null;
 }
 
-export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQueueStoreProps) {
+export function useQueueStore({ onLog, descriptiveNamingEnabled = true, backendCapabilities }: UseQueueStoreProps) {
   // --- UI state (from useQueueState) ---
   const [showQueue, setShowQueueRaw] = useState(false);
   const [editingQueueItemId, setEditingQueueItemId] = useState<string | null>(null);
@@ -49,8 +51,7 @@ export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQue
       let savedQueue = await window.electronAPI.getQueue();
 
       // Migrate old queue items: ensure backend/numStreams exist and normalize unsupported backends
-      const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform);
-      const platformDefaultBackend: import('../electron.d').InferenceBackend = isWindows ? 'directml' : 'onnxruntime-cpu';
+      const platformDefaultBackend = validateBackend(undefined, backendCapabilities);
 
       let migratedCount = 0;
       savedQueue = savedQueue.map((item: QueueItem) => {
@@ -61,8 +62,9 @@ export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQue
           workflow.backend = platformDefaultBackend;
           changed = true;
         }
-        if (workflow.backend === 'directml' && !isWindows) {
-          workflow.backend = 'onnxruntime-cpu';
+        const normalizedBackend = validateBackend(workflow.backend, backendCapabilities);
+        if (workflow.backend !== normalizedBackend) {
+          workflow.backend = normalizedBackend;
           changed = true;
         }
         if (typeof workflow.numStreams !== 'number' || isNaN(workflow.numStreams)) {
@@ -103,7 +105,7 @@ export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQue
       setIsLoadingQueue(false);
       hasLoadedInitially.current = true;
     }
-  }, [onLog]);
+  }, [onLog, backendCapabilities]);
 
   // Save queue to persistent storage
   const saveQueue = useCallback(async (queueToSave: QueueItem[]) => {
@@ -175,7 +177,7 @@ export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQue
       if (uniquePaths.length === 0) return prevQueue;
 
       const newItems: QueueItem[] = uniquePaths.map(videoPath => {
-        const videoName = videoPath.split(/[\\\\]/).pop() || 'unknown';
+        const videoName = videoPath.split(/[\\/]/).pop() || 'unknown';
 
         let outputPath: string;
         if (customOutputPath) {
@@ -195,7 +197,7 @@ export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQue
         }
 
         return {
-          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
           videoPath,
           videoName,
           outputPath,
@@ -306,7 +308,7 @@ export function useQueueStore({ onLog, descriptiveNamingEnabled = true }: UseQue
       if (!item) return prev;
       const duplicate: QueueItem = {
         ...item,
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         status: 'pending' as const,
         progress: 0,
         errorMessage: undefined,

@@ -30,7 +30,7 @@ Required runtime tools:
 - vs-mlrt ONNX Runtime plugin (`core.ort`) for ONNX Runtime CPU/CUDA backends
 - Optional: vs-mlrt TensorRT plugin (`core.trt`) and `trtexec` for TensorRT
 
-Important Linux note: upstream vs-mlrt does not publish pre-built Linux binaries. On first setup, VapourKit attempts to **automatically compile the vs-mlrt ONNX Runtime plugin from source** when `cmake`, `ninja`, `git`, `gcc`, and `g++` are available. If the automatic build is not possible, install the plugin through your distribution, place `.so` files in a VapourSynth plugin search path, or build it manually. VapourKit detects backend support at runtime and only exposes loadable backends.
+Important Linux note: upstream vs-mlrt does not publish pre-built Linux binaries. On first setup, VapourKit attempts to **automatically compile the vs-mlrt ONNX Runtime plugin from source** when `cmake`, `ninja`, `git`, `gcc`, `g++`, `patchelf`, and `ldd` are available. The default build uses Microsoft's prebuilt CPU ONNX Runtime archive and validates native libraries with `ldd`. VapourKit detects backend support at runtime and only exposes backends whose required pieces are reported by the loaded plugin. AMD/ROCm is detected for diagnostics, but current vs-mlrt `core.ort` does not expose a ROCm provider.
 
 ### Quick Start
 1. Select or drag-and-drop a video file
@@ -45,7 +45,7 @@ For custom filters, workflows, model files, and configuration details, see [Basi
 
 ### Core Capabilities
 - **AI Video Upscaling**: Process videos with high quality AI upscaling models
-- **Runtime Backend Detection**: TensorRT, ONNX Runtime CUDA/CPU, and DirectML are exposed only when supported by the current platform
+- **Runtime Backend Detection**: TensorRT, ONNX Runtime CUDA/CPU, and DirectML are exposed only when supported by the current platform, with diagnostics available in Settings
 - **Real-time Preview**: See results while processing
 - **Video Comparison**: Built-in side-by-side viewer
 - **Batch Processing**: Upscale multiple videos sequentially
@@ -70,12 +70,17 @@ See [Model Support](docs/Models.md) for included models, custom model requiremen
 - **GPU**: 
   - Minimum 6 GB VRAM
   - NVIDIA 16xx series or newer for TensorRT or ONNX Runtime CUDA, with a current NVIDIA driver
+  - AMD/ROCm detection is diagnostic only until an AMD-capable vs-mlrt backend is wired separately
   - AMD/Intel/NVIDIA GPU with DirectX 12 support for DirectML on Windows
   - CPU-only ONNX Runtime works on Linux when `core.ort` is available, but it is significantly slower
 
 ### Backend Availability
 - **Windows**: DirectML is available when the ONNX Runtime plugin is installed. TensorRT is available when the TensorRT plugin and `trtexec` are installed. ONNX Runtime CUDA/CPU are available when the ONNX Runtime plugin is installed.
-- **Linux**: DirectML is not available. ONNX Runtime CPU/CUDA require a loadable `core.ort` VapourSynth plugin. TensorRT requires both a loadable `core.trt` plugin and `trtexec`.
+- **Linux**: DirectML is not available. ONNX Runtime CPU requires a loadable `core.ort` VapourSynth plugin. ONNX Runtime CUDA additionally requires `core.ort.Version()` to report the `CUDA` provider and an NVIDIA CUDA-capable GPU. TensorRT requires both a loadable `core.trt` plugin and `trtexec`. Settings includes backend diagnostics for detected providers, plugin paths, GPU details, and probe errors.
+
+### Known Issues (Linux)
+
+- **Flatpak vsview**: If the `vsview` entrypoint is missing, the app falls back to launching it via the Python module in the bundled venv and logs which launch path was used.
 
 ## 🔧 Development
 

@@ -45,7 +45,7 @@ original_clip = clip
 # convert to output format and output
 output_format = core.get_video_format(output_format)
 color_family  = output_format.color_family 
-if clip.format.id != output_format:
+if clip.format.id != output_format.id:
     if color_family == vs.RGB:
         clip = core.resize.Bilinear(clip, format=output_format, primaries_s="709", transfer_s="709", dither_type="error_diffusion")
     else:

@@ -43,6 +43,12 @@ interface AppConfig {
   defaultOutputFolder?: string;
   descriptiveNamingEnabled?: boolean;
   encodingSettingsExpanded?: boolean;
+  onnxRuntimeSource?: 'prebuilt' | 'system';
+  systemOnnxRuntime?: {
+    includeDir?: string;
+    libDir?: string;
+    copyLibraries?: boolean;
+  };
   vsMlrtVersion?: string;
   appVersion?: string;
   models: {
@@ -84,6 +90,8 @@ const DEFAULT_CONFIG: AppConfig = {
   defaultOutputFolder: undefined,
   descriptiveNamingEnabled: true,
   encodingSettingsExpanded: false,
+  onnxRuntimeSource: 'prebuilt',
+  systemOnnxRuntime: undefined,
   vsMlrtVersion: undefined,
   models: {}
 };
@@ -387,15 +395,11 @@ export class ConfigManager {
   }
 
   getProcessingFormat(): string {
-    const format = this.config.processingFormat ?? 'vs.YUV420P8';
-    // Never return match_input as it's experimental - fallback to YUV420P8
-    return format === 'match_input' ? 'vs.YUV420P8' : format;
+    return this.config.processingFormat ?? 'vs.YUV420P8';
   }
 
   async setProcessingFormat(format: string): Promise<void> {
-    // Prevent saving match_input as it's experimental and can cause issues
-    // Default to YUV420P8 if match_input is passed
-    this.config.processingFormat = format === 'match_input' ? 'vs.YUV420P8' : format;
+    this.config.processingFormat = format;
     await this.save();
   }
 
@@ -449,6 +453,27 @@ export class ConfigManager {
 
   async setEncodingSettingsExpanded(expanded: boolean): Promise<void> {
     this.config.encodingSettingsExpanded = expanded;
+    await this.save();
+  }
+
+  getOnnxRuntimeConfig(): { source: 'prebuilt' | 'system'; includeDir?: string; libDir?: string; copyLibraries?: boolean } {
+    const envSource = process.env.VAPOURKIT_ONNXRUNTIME_SOURCE;
+    const source = envSource === 'system' || this.config.onnxRuntimeSource === 'system' ? 'system' : 'prebuilt';
+    return {
+      source,
+      includeDir: process.env.VAPOURKIT_ONNXRUNTIME_INCLUDE_DIR || this.config.systemOnnxRuntime?.includeDir,
+      libDir: process.env.VAPOURKIT_ONNXRUNTIME_LIB_DIR || this.config.systemOnnxRuntime?.libDir,
+      copyLibraries: process.env.VAPOURKIT_ONNXRUNTIME_COPY_LIBS === '1' || this.config.systemOnnxRuntime?.copyLibraries || false,
+    };
+  }
+
+  async setOnnxRuntimeConfig(config: { source: 'prebuilt' | 'system'; includeDir?: string; libDir?: string; copyLibraries?: boolean }): Promise<void> {
+    this.config.onnxRuntimeSource = config.source;
+    this.config.systemOnnxRuntime = {
+      includeDir: config.includeDir,
+      libDir: config.libDir,
+      copyLibraries: config.copyLibraries,
+    };
     await this.save();
   }
 

@@ -18,10 +18,8 @@ describe('getDefaultBackend', () => {
     expect(getDefaultBackend(caps)).toBe('onnxruntime-cuda');
   });
 
-  it('falls back to directml on Windows when no caps', () => {
-    // On this Linux test runner, navigator.platform is Linux, so default is onnxruntime-cpu
-    const expected = typeof navigator !== 'undefined' && /Win/.test(navigator.platform) ? 'directml' : 'onnxruntime-cpu';
-    expect(getDefaultBackend(null)).toBe(expected);
+  it('falls back to CPU when no caps are loaded yet', () => {
+    expect(getDefaultBackend(null)).toBe('onnxruntime-cpu');
   });
 });
 
@@ -49,4 +47,5 @@ describe('validateBackend', () => {
   it('remaps directml to onnxruntime-cpu on Linux', () => {
     expect(validateBackend('directml', caps)).toBe('onnxruntime-cpu');
   });
+
 });

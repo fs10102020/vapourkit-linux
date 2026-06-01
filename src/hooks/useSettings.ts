@@ -1,34 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { InferenceBackend, BackendCapabilities } from '../electron.d';
+import { getDefaultBackend, validateBackend } from '../types/backend';
 
-export function getDefaultBackend(caps: BackendCapabilities | null | undefined): InferenceBackend {
-  if (caps?.recommendedBackend) {
-    return caps.recommendedBackend;
-  }
-  // Fallback when capabilities are not yet loaded
-  const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform);
-  return isWindows ? 'directml' : 'onnxruntime-cpu';
-}
-
-function isInferenceBackend(value: unknown): value is InferenceBackend {
-  return value === 'directml' ||
-    value === 'tensorrt' ||
-    value === 'onnxruntime-cuda' ||
-    value === 'onnxruntime-cpu';
-}
-
-export function validateBackend(
-  raw: unknown,
-  caps: BackendCapabilities | null | undefined
-): InferenceBackend {
-  if (isInferenceBackend(raw) && caps?.supportedBackends?.includes(raw)) {
-    return raw;
-  }
-  if (!caps && isInferenceBackend(raw)) {
-    return raw;
-  }
-  return getDefaultBackend(caps);
-}
+export { getDefaultBackend, validateBackend } from '../types/backend';
 
 export const useSettings = (backendCapabilities?: BackendCapabilities | null) => {
   const [backendState, setBackendState] = useState<InferenceBackend>(() => {

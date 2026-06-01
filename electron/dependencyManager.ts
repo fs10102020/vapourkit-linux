@@ -10,7 +10,7 @@ import { FFmpegManager } from './ffmpegManager';
 import { configManager } from './configManager';
 import { VsMlrtManager } from './vsMlrtManager';
 import { libName, isLinux, executableExists } from './platform';
-import * as _7z from '7zip-min';
+import * as _7z from './sevenZip';
 
 export interface DownloadProgress {
   type: 'download' | 'extract' | 'complete' | 'error' | 'python-setup' | 'model-extract';
@@ -47,6 +47,10 @@ export class DependencyManager {
   }
 
   private async setupEmbeddedPython(): Promise<void> {
+    if (isLinux) {
+      throw new Error('Embedded Python setup is Windows-only; Linux uses a virtual environment or system Python');
+    }
+
     logger.dependency('Setting up embedded Python');
     
     this.sendProgress({
@@ -417,7 +421,7 @@ export class DependencyManager {
 
   async checkDependencyStatus(): Promise<import('./dependencyResolver').DependencyStatus[]> {
     const { DependencyResolver } = await import('./dependencyResolver');
-    return DependencyResolver.resolveAll();
+    return DependencyResolver.resolveAllReadOnly();
   }
 
   async setupDependencies(): Promise<void> {
@@ -836,32 +840,4 @@ export class DependencyManager {
     return PATHS.PYTHON;
   }
 
-  private async extractExtraPlugins(): Promise<void> {
-    logger.dependency('Checking for extra plugins');
-    
-    // Get bundled extra plugins path
-    const bundledBasePath = getBundledBasePath();
-    const extraPluginsPath = path.join(bundledBasePath, 'include', 'plugins', 'extra_plugins.7z');
-    
-    if (await fs.pathExists(extraPluginsPath)) {
-      logger.dependency(`Found extra plugins at: ${extraPluginsPath}`);
-      
-      this.sendProgress({
-        type: 'extract',
-        component: 'Extra Plugins',
-        progress: 0,
-        message: 'Extracting extra VapourSynth plugins...'
-      });
-      
-      try {
-        await this.extractArchive(extraPluginsPath, PATHS.PLUGINS, 'Extra Plugins');
-        logger.dependency('Extra plugins extracted successfully');
-      } catch (error) {
-        logger.error('Failed to extract extra plugins:', error);
-        // Don't fail the entire setup if extra plugins fail
-      }
-    } else {
-      logger.dependency('No extra plugins found, skipping');
-    }
-  }
 }

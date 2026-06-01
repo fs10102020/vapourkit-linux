@@ -35,12 +35,22 @@ export function useSetup(onLog: (message: string) => void) {
     return unsubscribe;
   }, [onLog]);
 
-  const checkDependencies = useCallback(async (): Promise<void> => {
-    setIsCheckingDeps(true);
+  const refreshBackendCapabilities = useCallback(async (): Promise<BackendCapabilities | null> => {
     try {
       const capabilities = await window.electronAPI.getBackendCapabilities();
       setBackendCapabilities(capabilities);
       onLog(`Backend capabilities: ${capabilities.supportedBackends.join(', ')}, recommended: ${capabilities.recommendedBackend}`);
+      return capabilities;
+    } catch (error) {
+      onLog(`Error refreshing backend capabilities: ${getErrorMessage(error)}`);
+      return null;
+    }
+  }, [onLog]);
+
+  const checkDependencies = useCallback(async (): Promise<void> => {
+    setIsCheckingDeps(true);
+    try {
+      await refreshBackendCapabilities();
 
       const isComplete = await window.electronAPI.checkDependencies();
       setIsSetupComplete(isComplete);
@@ -54,7 +64,7 @@ export function useSetup(onLog: (message: string) => void) {
     } finally {
       setIsCheckingDeps(false);
     }
-  }, [onLog]);
+  }, [onLog, refreshBackendCapabilities]);
 
   const handleSetup = async (): Promise<void> => {
     setIsSettingUp(true);
@@ -75,22 +85,55 @@ export function useSetup(onLog: (message: string) => void) {
     });
 
     onLog('Starting dependency setup...');
-    await window.electronAPI.setupDependencies();
+    try {
+      const result = await window.electronAPI.setupDependencies();
+
+      // Refresh capabilities after setup completes so the main app sees post-setup state.
+      if (result?.success) {
+        await refreshBackendCapabilities();
+        setPluginInstallError(null);
+        setIsSettingUp(false);
+        setIsSetupComplete(true);
+      } else {
+        if (result?.error) onLog(`Dependency setup failed: ${result.error}`);
+        setIsSettingUp(false);
+      }
+    } catch (error) {
+      onLog(`Dependency setup failed: ${getErrorMessage(error)}`);
+      setIsSettingUp(false);
+    }
   };
 
   const handleRetryPlugins = useCallback(async (): Promise<void> => {
     setIsSettingUp(true);
     setPluginInstallError(null);
     onLog('Retrying plugin install...');
-    await window.electronAPI.retrySetupPlugins();
-  }, [onLog]);
+    try {
+      const result = await window.electronAPI.retrySetupPlugins();
+      if (result.success) {
+        await refreshBackendCapabilities();
+        setPluginInstallError(null);
+        setIsSettingUp(false);
+        setIsSetupComplete(true);
+      } else {
+        if (result.error) onLog(`Plugin retry failed: ${result.error}`);
+        setIsSettingUp(false);
+      }
+    } catch (error) {
+      onLog(`Plugin retry failed: ${getErrorMessage(error)}`);
+      setIsSettingUp(false);
+    }
+  }, [onLog, refreshBackendCapabilities]);
 
   const handleContinueWithoutPlugins = useCallback((): void => {
     onLog('User chose to continue without plugins - entering main app');
     setPluginInstallError(null);
     setIsSettingUp(false);
     setIsSetupComplete(true);
-  }, [onLog]);
+    // Fire-and-forget refresh so the main app eventually sees post-setup state;
+    // do not block entry on a refresh failure.
+    refreshBackendCapabilities();
+  }, [onLog, refreshBackendCapabilities]);
 
   // Check dependencies on mount
   useEffect(() => {

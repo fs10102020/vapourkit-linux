@@ -1,8 +1,10 @@
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 import { app } from 'electron';
+import { isLinux } from './platformState';
 
-const isLinuxRuntime = process.platform === 'linux';
+const PYTHON_SITE_PACKAGES_PATTERN = /^python\d+(?:\.\d+)?$/;
 
 /**
  * Linux / Flatpak runtime helpers for VapourKit.
@@ -14,12 +16,12 @@ const isLinuxRuntime = process.platform === 'linux';
 
 /** True when running inside a Flatpak sandbox. */
 export function isFlatpak(): boolean {
-  return isLinuxRuntime && !!process.env['FLATPAK_ID'];
+  return isLinux && !!process.env['FLATPAK_ID'];
 }
 
 /** True when the app is running from an AppImage. */
 export function isAppImage(): boolean {
-  return isLinuxRuntime && !!process.env['APPIMAGE'];
+  return isLinux && !!process.env['APPIMAGE'];
 }
 
 /**
@@ -29,7 +31,7 @@ export function isAppImage(): boolean {
  * - Native / dev: project-root/data in dev, ~/.config/<app>/ in packaged
  */
 export function getLinuxAppDataPath(): string {
-  if (!isLinuxRuntime) {
+  if (!isLinux) {
     if (!app.isPackaged) {
       return path.join(app.getAppPath(), 'data');
     }
@@ -62,22 +64,27 @@ export function getLinuxPythonPath(): string {
 export function getLinuxVenvSitePackages(): string | undefined {
   const pythonDir = path.dirname(getLinuxPythonPath());
   const venvRoot = path.dirname(pythonDir);
-  const candidates = [
-    path.join(venvRoot, 'lib', 'python3.13', 'site-packages'),
-    path.join(venvRoot, 'lib', 'python3.12', 'site-packages'),
-    path.join(venvRoot, 'lib', 'python3.11', 'site-packages'),
-    path.join(venvRoot, 'lib', 'python3.10', 'site-packages'),
-    path.join(venvRoot, 'lib', 'python3.9', 'site-packages'),
-    path.join(venvRoot, 'lib', 'python3', 'site-packages'),
-  ];
-  return candidates.find(sp => {
+  return findSitePackagesInVenv(venvRoot);
+}
+
+export function findSitePackagesInVenv(venvRoot: string): string | undefined {
+  const libRoots = ['lib', 'lib64'].map(lib => path.join(venvRoot, lib));
+
+  for (const libRoot of libRoots) {
     try {
-      const fs = require('fs');
-      return fs.existsSync(sp);
+      if (!fs.existsSync(libRoot)) continue;
+      const entries = fs.readdirSync(libRoot, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || !PYTHON_SITE_PACKAGES_PATTERN.test(entry.name)) continue;
+        const sitePackages = path.join(libRoot, entry.name, 'site-packages');
+        if (fs.existsSync(sitePackages)) return sitePackages;
+      }
     } catch {
-      return false;
+      // Ignore unreadable lib roots and continue with other candidates.
     }
-  });
+  }
+
+  return undefined;
 }
 
 /**
@@ -86,7 +93,7 @@ export function getLinuxVenvSitePackages(): string | undefined {
  * whatever is already in VS_PLUGINS_PATH / VAPOURSYNTH_PLUGINS_PATH.
  */
 export function getLinuxVsPluginSearchPaths(): string[] {
-  if (!isLinuxRuntime) return [];
+  if (!isLinux) return [];
 
   const paths: string[] = [];
 
@@ -100,8 +107,21 @@ export function getLinuxVsPluginSearchPaths(): string[] {
 
   // System + user local
   paths.push('/usr/lib/vapoursynth');
+  paths.push('/usr/lib64/vapoursynth');
+  paths.push('/usr/lib/x86_64-linux-gnu/vapoursynth');
   paths.push('/usr/local/lib/vapoursynth');
+  paths.push('/usr/local/lib64/vapoursynth');
+  paths.push('/lib/vapoursynth');
+
+  const triplet = getLinuxMultiarchTriplet();
+  if (triplet) {
+    paths.push(`/usr/lib/${triplet}/vapoursynth`);
+    paths.push(`/usr/local/lib/${triplet}/vapoursynth`);
+    paths.push(`/lib/${triplet}/vapoursynth`);
+  }
+
   paths.push(path.join(os.homedir(), '.local', 'lib', 'vapoursynth'));
+  paths.push(path.join(os.homedir(), '.local', 'lib64', 'vapoursynth'));
 
   // Preserve env overrides
   const envPaths = (process.env['VS_PLUGINS_PATH'] || process.env['VAPOURSYNTH_PLUGINS_PATH'] || '')
@@ -112,11 +132,20 @@ export function getLinuxVsPluginSearchPaths(): string[] {
   return [...new Set(paths)];
 }
 
+function getLinuxMultiarchTriplet(): string | null {
+  switch (process.arch) {
+    case 'x64': return 'x86_64-linux-gnu';
+    case 'arm64': return 'aarch64-linux-gnu';
+    case 'arm': return 'arm-linux-gnueabihf';
+    case 'ia32': return 'i386-linux-gnu';
+    default: return null;
+  }
+}
+
 /**
  * Checks whether a VapourSynth plugin file exists in the search paths.
  */
 export function findLinuxPlugin(name: string): boolean {
-  const fs = require('fs');
   for (const dir of getLinuxVsPluginSearchPaths()) {
     if (fs.existsSync(path.join(dir, `${name}.so`))) return true;
     if (fs.existsSync(path.join(dir, `lib${name}.so`))) return true;
@@ -129,30 +158,11 @@ export function findLinuxPlugin(name: string): boolean {
  * Avoids using the non-existent portable directory when vspipe comes from PATH.
  */
 export function getVapourSynthCwd(): string {
-  if (!isLinuxRuntime) {
+  if (!isLinux) {
     return path.join(getLinuxAppDataPath(), 'vapoursynth-portable');
   }
   // Use a guaranteed-writable temp directory; the portable dir may not exist
   return os.tmpdir();
-}
-
-/**
- * Normalizes a backend string to a supported InferenceBackend.
- * Falls back to 'onnxruntime-cpu' when the requested backend is unavailable
- * or unsupported on the current platform.
- */
-export function normalizeBackend(
-  raw: string | undefined,
-  supported: string[]
-): 'directml' | 'tensorrt' | 'onnxruntime-cuda' | 'onnxruntime-cpu' {
-  const valid = raw as any;
-  if (valid && supported.includes(valid)) {
-    return valid;
-  }
-  if (supported.includes('tensorrt')) return 'tensorrt';
-  if (supported.includes('onnxruntime-cuda')) return 'onnxruntime-cuda';
-  if (supported.includes('directml')) return 'directml';
-  return 'onnxruntime-cpu';
 }
 
 /**
