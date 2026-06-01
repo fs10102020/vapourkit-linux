@@ -5,6 +5,7 @@
   - Linux uses system VapourSynth, FFmpeg, Python, BestSource, and vs-mlrt plugins instead of Windows portable dependency downloads
   - App data/log paths now avoid read-only packaged locations on Linux
   - VapourSynth plugin search paths include app data, Flatpak, system, user-local, and environment-provided locations
+  - Non-Flatpak setup can optionally build `video-compare` from source when FFmpeg/SDL2 development headers are installed
 - Add runtime backend capability probing
   - Probes `core.ort`, `core.trt`, and `core.bs` through `vspipe`
   - Detects NVIDIA, AMD/ROCm, and Intel GPU presence for backend diagnostics
@@ -26,6 +27,7 @@
   - Default remains Microsoft's prebuilt CPU ONNX Runtime archive
   - Advanced/system mode accepts include/lib directories for distro-built ONNX Runtime libraries
   - Validates `libonnxruntime.so` and installed `vsort.so` dependencies with `ldd`
+- Add optional Linux TensorRT plugin source build when CUDA Toolkit and TensorRT SDK development files are detected
 - Add backend validation at processing boundary (main process + renderer)
 - Remove `navigator.platform` sniffing; use `BackendCapabilities` from main process as single source of truth
 - Fix `sitePackagesDir()` to probe versioned site-packages directories instead of using `os.platform()`

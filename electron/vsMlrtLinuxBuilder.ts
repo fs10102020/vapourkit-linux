@@ -30,17 +30,33 @@ interface OnnxRuntimeLayout {
   copyLibraries: boolean;
 }
 
+export interface TensorRtStatus {
+  found: boolean;
+  homeDir?: string;
+  includeDir?: string;
+  libDir?: string;
+  trtexecPath?: string;
+  guide?: string;
+}
+
+interface TensorRtLayout {
+  homeDir?: string;
+  includeDir: string;
+  libDir: string;
+  trtexecPath?: string;
+}
+
 /** Versions pinned to match the vs-mlrt GitHub Actions workflow. */
 const PROTOBUF_VERSION = '3.21.12';
 const ONNX_COMMIT = 'b86cc54efce19530fb953e4b21f57e6b3888534c';
 const ONNX_RUNTIME_VERSION = '1.17.1';
 
 /**
- * Builds vs-mlrt ONNX Runtime plugin (vsort) from source on Linux.
+ * Builds vs-mlrt plugins from source on Linux.
  *
  * The build caches protobuf and ONNX locally so repeated setups are fast.
- * Only the CPU backend is enabled; CUDA support would require the CUDA toolkit
- * and significantly complicates the build.
+ * ONNX Runtime defaults to the CPU prebuilt archive. TensorRT is optional and
+ * only builds when the local NVIDIA TensorRT SDK and CUDA toolkit are present.
  */
 export class VsMlrtLinuxBuilder {
   private readonly buildCache: string;
@@ -94,6 +110,113 @@ export class VsMlrtLinuxBuilder {
       `  openSUSE: sudo zypper install -t pattern devel_basis && sudo zypper install cmake ninja git patchelf glibc\n` +
       `  Other distros: install a C++20 compiler, CMake, Ninja, Git, patchelf, and ldd`
     );
+  }
+
+  static getTensorRtGuide(): string {
+    return (
+      `TensorRT SDK development files were not found. Install NVIDIA TensorRT and CUDA Toolkit, ` +
+      `or set TENSORRT_HOME to a directory containing include/NvInfer.h and lib/libnvinfer.so.\n` +
+      `Common packages:\n` +
+      `  Debian/Ubuntu: install NVIDIA TensorRT deb packages, including libnvinfer-dev and tensorrt\n` +
+      `  Fedora/RHEL: install NVIDIA TensorRT rpm packages and CUDA Toolkit\n` +
+      `  Arch: install TensorRT/CUDA packages from AUR or NVIDIA tarball, then set TENSORRT_HOME`
+    );
+  }
+
+  static async detectTensorRt(): Promise<TensorRtStatus> {
+    const envHome = process.env.TENSORRT_HOME || process.env.TENSORRT_ROOT || process.env.TRT_ROOT;
+    const homeCandidates = [
+      envHome,
+      '/usr',
+      '/usr/local',
+      '/usr/local/tensorrt',
+      '/opt/tensorrt',
+      '/usr/src/tensorrt',
+      '/app',
+    ].filter((candidate): candidate is string => !!candidate);
+
+    for (const homeDir of homeCandidates) {
+      const layout = await VsMlrtLinuxBuilder.detectTensorRtHome(homeDir);
+      if (layout) return { found: true, ...layout };
+    }
+
+    const includeCandidates = [
+      '/usr/include/x86_64-linux-gnu',
+      '/usr/include',
+      '/usr/local/include',
+      '/app/include',
+    ];
+    const libCandidates = [
+      '/usr/lib/x86_64-linux-gnu',
+      '/usr/lib64',
+      '/usr/lib',
+      '/usr/local/lib64',
+      '/usr/local/lib',
+      '/app/lib',
+    ];
+
+    for (const includeDir of includeCandidates) {
+      if (!(await fs.pathExists(path.join(includeDir, 'NvInfer.h')))) continue;
+      for (const libDir of libCandidates) {
+        if (await fs.pathExists(path.join(libDir, 'libnvinfer.so'))) {
+          return {
+            found: true,
+            includeDir,
+            libDir,
+            trtexecPath: await VsMlrtLinuxBuilder.findTrtexec(),
+          };
+        }
+      }
+    }
+
+    return { found: false, guide: VsMlrtLinuxBuilder.getTensorRtGuide() };
+  }
+
+  private static async detectTensorRtHome(homeDir: string): Promise<TensorRtLayout | null> {
+    const includeCandidates = [
+      path.join(homeDir, 'include'),
+      path.join(homeDir, 'include', 'x86_64-linux-gnu'),
+    ];
+    const libCandidates = [
+      path.join(homeDir, 'lib'),
+      path.join(homeDir, 'lib64'),
+      path.join(homeDir, 'lib', 'x86_64-linux-gnu'),
+    ];
+
+    for (const includeDir of includeCandidates) {
+      if (!(await fs.pathExists(path.join(includeDir, 'NvInfer.h')))) continue;
+      for (const libDir of libCandidates) {
+        if (await fs.pathExists(path.join(libDir, 'libnvinfer.so'))) {
+          return {
+            homeDir,
+            includeDir,
+            libDir,
+            trtexecPath: await VsMlrtLinuxBuilder.findTrtexec(homeDir),
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private static async findTrtexec(homeDir?: string): Promise<string | undefined> {
+    const fromPath = await VsMlrtLinuxBuilder.which('trtexec');
+    if (fromPath) return fromPath;
+
+    const candidates = [
+      homeDir ? path.join(homeDir, 'bin', 'trtexec') : undefined,
+      '/usr/src/tensorrt/bin/trtexec',
+      '/usr/local/tensorrt/bin/trtexec',
+      '/opt/tensorrt/bin/trtexec',
+      '/app/bin/trtexec',
+    ].filter((candidate): candidate is string => !!candidate);
+
+    for (const candidate of candidates) {
+      if (await fs.pathExists(candidate)) return candidate;
+    }
+
+    return undefined;
   }
 
   /**
@@ -169,6 +292,97 @@ export class VsMlrtLinuxBuilder {
 
     logger.dependency(`Installed vsort.so to ${finalSo}`);
     return finalSo;
+  }
+
+  async buildTensorRtAndInstall(progressCallback?: VsMlrtBuildProgressCallback): Promise<string> {
+    this.progressCallback = progressCallback;
+
+    const tools = await VsMlrtLinuxBuilder.detectBuildTools();
+    if (!VsMlrtLinuxBuilder.isBuildEnvironmentReady(tools)) {
+      const missing = tools.filter(t => !t.found).map(t => t.name);
+      throw new Error(VsMlrtLinuxBuilder.getBuildToolGuide(missing));
+    }
+
+    const tensorRtStatus = await VsMlrtLinuxBuilder.detectTensorRt();
+    if (!tensorRtStatus.found || !tensorRtStatus.includeDir || !tensorRtStatus.libDir) {
+      throw new Error(tensorRtStatus.guide || VsMlrtLinuxBuilder.getTensorRtGuide());
+    }
+
+    const tensorRtLayout: TensorRtLayout = {
+      homeDir: tensorRtStatus.homeDir,
+      includeDir: tensorRtStatus.includeDir,
+      libDir: tensorRtStatus.libDir,
+      trtexecPath: tensorRtStatus.trtexecPath,
+    };
+
+    await fs.ensureDir(this.buildCache);
+    await fs.ensureDir(this.pluginOutputDir);
+
+    this.emitProgress(10, 'Preparing TensorRT plugin build...');
+    const vsIncludeDir = await this.findVapourSynthHeaders();
+    const vsMlrtSourceDir = await this.cloneVsMlrtSource();
+    const tensorRtHome = await this.prepareTensorRtHomeLayout(tensorRtLayout);
+
+    const vstrtBuildDir = path.join(vsMlrtSourceDir, 'vstrt', 'build');
+    const vstrtInstallDir = path.join(vsMlrtSourceDir, 'vstrt', 'install');
+
+    this.emitProgress(25, 'Configuring vs-mlrt TensorRT plugin...');
+    await this.configureVsTrt(
+      vsMlrtSourceDir,
+      vstrtBuildDir,
+      vstrtInstallDir,
+      vsIncludeDir,
+      tensorRtHome,
+      tensorRtLayout.libDir
+    );
+
+    this.emitProgress(60, 'Building vs-mlrt TensorRT plugin...');
+    await runCommand('cmake', ['--build', vstrtBuildDir, '--parallel'], vstrtBuildDir);
+
+    this.emitProgress(85, 'Installing vs-mlrt TensorRT plugin...');
+    await fs.ensureDir(vstrtInstallDir);
+    await runCommand('cmake', ['--install', vstrtBuildDir, '--prefix', vstrtInstallDir], vstrtBuildDir);
+
+    const candidateOutputs = [
+      path.join(vstrtInstallDir, 'lib', 'libvstrt.so'),
+      path.join(vstrtInstallDir, 'lib', 'vstrt.so'),
+      path.join(vstrtInstallDir, 'lib', 'libvstrt_rtx.so'),
+      path.join(vstrtInstallDir, 'lib', 'vstrt_rtx.so'),
+    ];
+    const builtSo = candidateOutputs.find(candidate => fs.pathExistsSync(candidate));
+    if (!builtSo) {
+      throw new Error(`vstrt build completed but no TensorRT plugin was found under ${path.join(vstrtInstallDir, 'lib')}`);
+    }
+
+    const finalSo = path.join(this.pluginOutputDir, 'vstrt.so');
+    await fs.copy(builtSo, finalSo, { overwrite: true });
+    await this.setRpath(finalSo, `$ORIGIN:${tensorRtLayout.libDir}`);
+
+    const validation = await validateSharedLibrary(finalSo);
+    if (!validation.ok) {
+      throw new Error(`Installed vstrt.so has unresolved native dependencies: ${validation.missing.join(', ')}`);
+    }
+
+    await this.installTrtexecIfAvailable(tensorRtLayout);
+    this.emitProgress(100, 'vs-mlrt TensorRT plugin installed successfully');
+
+    logger.dependency(`Installed vstrt.so to ${finalSo}`);
+    return finalSo;
+  }
+
+  async installTrtexecFromDetectedTensorRt(): Promise<boolean> {
+    const tensorRtStatus = await VsMlrtLinuxBuilder.detectTensorRt();
+    if (!tensorRtStatus.found || !tensorRtStatus.includeDir || !tensorRtStatus.libDir || !tensorRtStatus.trtexecPath) {
+      return false;
+    }
+
+    await this.installTrtexecIfAvailable({
+      homeDir: tensorRtStatus.homeDir,
+      includeDir: tensorRtStatus.includeDir,
+      libDir: tensorRtStatus.libDir,
+      trtexecPath: tensorRtStatus.trtexecPath,
+    });
+    return true;
   }
 
   /** Build protobuf from source if not already cached. */
@@ -454,6 +668,71 @@ export class VsMlrtLinuxBuilder {
     await runCommand('cmake', cmakeArgs, vsMlrtSrc);
   }
 
+  private async configureVsTrt(
+    vsMlrtSrc: string,
+    buildDir: string,
+    installDir: string,
+    vsIncludeDir: string,
+    tensorRtHome: string,
+    tensorRtLibDir: string
+  ): Promise<void> {
+    const vstrtDir = path.join(vsMlrtSrc, 'vstrt');
+    await fs.ensureDir(buildDir);
+
+    const cmakeArgs = [
+      '-S', vstrtDir,
+      '-B', buildDir,
+      '-G', 'Ninja',
+      '-DCMAKE_BUILD_TYPE=Release',
+      '-DCMAKE_CXX_FLAGS=-Wall -ffast-math -march=x86-64',
+      '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+      `-DVAPOURSYNTH_INCLUDE_DIRECTORY=${vsIncludeDir}`,
+      `-DTENSORRT_HOME=${tensorRtHome}`,
+      '-DUSE_NVINFER_PLUGIN=OFF',
+      '-DCMAKE_CXX_STANDARD=20',
+      '-DCMAKE_INSTALL_LIBDIR=lib',
+      `-DCMAKE_INSTALL_RPATH=$ORIGIN:${tensorRtLibDir}`,
+      '-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON',
+      `-DCMAKE_INSTALL_PREFIX=${installDir}`,
+    ];
+
+    await runCommand('cmake', cmakeArgs, vsMlrtSrc);
+  }
+
+  private async prepareTensorRtHomeLayout(layout: TensorRtLayout): Promise<string> {
+    if (
+      layout.homeDir &&
+      layout.includeDir === path.join(layout.homeDir, 'include') &&
+      layout.libDir === path.join(layout.homeDir, 'lib')
+    ) {
+      return layout.homeDir;
+    }
+
+    const syntheticHome = path.join(this.buildCache, 'tensorrt-layout');
+    await fs.remove(syntheticHome);
+    await fs.ensureDir(syntheticHome);
+    await fs.symlink(layout.includeDir, path.join(syntheticHome, 'include'), 'dir');
+    await fs.symlink(layout.libDir, path.join(syntheticHome, 'lib'), 'dir');
+    return syntheticHome;
+  }
+
+  private async installTrtexecIfAvailable(layout: TensorRtLayout): Promise<void> {
+    if (!layout.trtexecPath) {
+      logger.warn('TensorRT plugin installed, but trtexec was not found. TensorRT engine building will remain unavailable until trtexec is on PATH.');
+      return;
+    }
+
+    const installPath = path.join(PATHS.MLRT_PLUGIN, 'trtexec');
+    if (path.resolve(layout.trtexecPath) === path.resolve(installPath)) {
+      return;
+    }
+
+    await fs.ensureDir(PATHS.MLRT_PLUGIN);
+    await fs.copy(layout.trtexecPath, installPath, { overwrite: true });
+    await fs.chmod(installPath, 0o755);
+    logger.dependency(`Installed trtexec to ${installPath}`);
+  }
+
   private async copyOnnxRuntimeLibraries(layout: OnnxRuntimeLayout): Promise<void> {
     if (!layout.copyLibraries) {
       logger.dependency('Using system ONNX Runtime in-place; not copying ONNX Runtime libraries');
@@ -470,6 +749,10 @@ export class VsMlrtLinuxBuilder {
 
   private async setPluginRpath(pluginPath: string, layout: OnnxRuntimeLayout): Promise<void> {
     const rpath = layout.copyLibraries ? '$ORIGIN' : `$ORIGIN:${layout.libDir}`;
+    await this.setRpath(pluginPath, rpath);
+  }
+
+  private async setRpath(pluginPath: string, rpath: string): Promise<void> {
     await runCommand('patchelf', ['--set-rpath', rpath, pluginPath], this.pluginOutputDir);
   }
 

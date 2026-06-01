@@ -9,8 +9,11 @@ import { runCommand, getBundledBasePath } from './utils';
 import { FFmpegManager } from './ffmpegManager';
 import { configManager } from './configManager';
 import { VsMlrtManager } from './vsMlrtManager';
-import { libName, isLinux, executableExists } from './platform';
+import { libName, isLinux, executableExists, resolveCommandPath } from './platform';
+import { isFlatpak } from './linuxRuntime';
 import * as _7z from './sevenZip';
+
+const VIDEO_COMPARE_VERSION = '20250928';
 
 export interface DownloadProgress {
   type: 'download' | 'extract' | 'complete' | 'error' | 'python-setup' | 'model-extract';
@@ -419,6 +422,157 @@ export class DependencyManager {
     }
   }
 
+  private async setupLinuxVideoCompare(): Promise<void> {
+    if (!isLinux) return;
+
+    if (executableExists(PATHS.VIDEO_COMPARE_EXE)) {
+      logger.dependency('video-compare detected');
+      this.sendProgress({
+        type: 'download',
+        component: 'Video Compare',
+        progress: 100,
+        message: 'video-compare detected',
+      });
+      return;
+    }
+
+    if (isFlatpak()) {
+      logger.warn('video-compare not found in Flatpak runtime; package manifest should provide /app/bin/video-compare');
+      this.sendProgress({
+        type: 'download',
+        component: 'Video Compare',
+        progress: 100,
+        message: 'video-compare not found in Flatpak runtime (optional)',
+      });
+      return;
+    }
+
+    const missingTools = await this.getMissingVideoCompareBuildTools();
+    if (missingTools.length > 0) {
+      const guide = this.getVideoCompareBuildGuide(missingTools);
+      logger.warn(`Cannot build video-compare automatically. ${guide}`);
+      this.sendProgress({
+        type: 'download',
+        component: 'Video Compare',
+        progress: 100,
+        message: 'Optional video-compare build skipped; install build dependencies to enable comparison.',
+      });
+      return;
+    }
+
+    try {
+      await this.buildLinuxVideoCompare();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`Optional video-compare build failed: ${message}`);
+      this.sendProgress({
+        type: 'download',
+        component: 'Video Compare',
+        progress: 100,
+        message: 'Optional video-compare build failed; comparison can be enabled by installing video-compare manually.',
+      });
+    }
+  }
+
+  private async getMissingVideoCompareBuildTools(): Promise<string[]> {
+    const requiredCommands = ['git', 'make', 'gcc', 'g++', 'pkg-config'];
+    const missing: string[] = [];
+
+    for (const command of requiredCommands) {
+      if (!(await resolveCommandPath(command))) {
+        missing.push(command);
+      }
+    }
+
+    if (!missing.includes('pkg-config')) {
+      const pkgConfigPackages = [
+        'libavformat',
+        'libavcodec',
+        'libavfilter',
+        'libavutil',
+        'libswscale',
+        'libswresample',
+        'sdl2',
+        'SDL2_ttf',
+      ];
+
+      try {
+        await runCommand('pkg-config', ['--exists', ...pkgConfigPackages]);
+      } catch {
+        missing.push('FFmpeg/SDL2 development headers');
+      }
+    }
+
+    return missing;
+  }
+
+  private getVideoCompareBuildGuide(missing: string[]): string {
+    return (
+      `Missing dependencies for optional video-compare source build: ${missing.join(', ')}\n` +
+      `Install them with your package manager:\n` +
+      `  Arch: sudo pacman -S base-devel git ffmpeg sdl2 sdl2_ttf pkgconf\n` +
+      `  Debian/Ubuntu: sudo apt install build-essential git pkg-config libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev libswresample-dev libsdl2-dev libsdl2-ttf-dev\n` +
+      `  Fedora: sudo dnf install make gcc-c++ git pkgconf-pkg-config ffmpeg-devel SDL2-devel SDL2_ttf-devel\n` +
+      `  openSUSE: sudo zypper install -t pattern devel_basis && sudo zypper install git pkg-config ffmpeg-6-libavformat-devel ffmpeg-6-libavcodec-devel ffmpeg-6-libavfilter-devel ffmpeg-6-libavutil-devel ffmpeg-6-libswscale-devel ffmpeg-6-libswresample-devel libSDL2-devel libSDL2_ttf-devel`
+    );
+  }
+
+  private async buildLinuxVideoCompare(): Promise<void> {
+    const buildRoot = path.join(PATHS.APP_DATA, 'build-cache', `video-compare-${VIDEO_COMPARE_VERSION}`);
+    const sourceDir = path.join(buildRoot, 'video-compare');
+    const builtBinary = path.join(sourceDir, 'video-compare');
+    const installBinary = path.join(PATHS.VIDEO_COMPARE, 'video-compare');
+
+    this.sendProgress({
+      type: 'download',
+      component: 'Video Compare',
+      progress: 0,
+      message: 'Building optional video-compare tool from source...',
+    });
+
+    await fs.ensureDir(buildRoot);
+
+    if (!(await fs.pathExists(sourceDir))) {
+      this.sendProgress({
+        type: 'download',
+        component: 'Video Compare',
+        progress: 20,
+        message: 'Cloning video-compare source...',
+      });
+      await runCommand('git', [
+        'clone',
+        '--depth', '1',
+        '--branch', VIDEO_COMPARE_VERSION,
+        'https://github.com/pixop/video-compare.git',
+        sourceDir,
+      ], buildRoot);
+    }
+
+    this.sendProgress({
+      type: 'download',
+      component: 'Video Compare',
+      progress: 50,
+      message: 'Compiling video-compare...',
+    });
+    await runCommand('make', [], sourceDir);
+
+    if (!(await fs.pathExists(builtBinary))) {
+      throw new Error(`video-compare build completed but ${builtBinary} was not found`);
+    }
+
+    await fs.ensureDir(PATHS.VIDEO_COMPARE);
+    await fs.copy(builtBinary, installBinary, { overwrite: true });
+    await fs.chmod(installBinary, 0o755);
+
+    this.sendProgress({
+      type: 'download',
+      component: 'Video Compare',
+      progress: 100,
+      message: 'video-compare built and installed',
+    });
+    logger.dependency(`Installed video-compare to ${installBinary}`);
+  }
+
   async checkDependencyStatus(): Promise<import('./dependencyResolver').DependencyStatus[]> {
     const { DependencyResolver } = await import('./dependencyResolver');
     return DependencyResolver.resolveAllReadOnly();
@@ -480,10 +634,7 @@ export class DependencyManager {
         }
         this.sendProgress({ type: 'download', component: 'VapourSynth', progress: 85, message: 'VapourSynth detected' });
 
-        const vcResult = await DependencyResolver.resolveVideoCompare();
-        if (!vcResult.installed) {
-          logger.warn('video-compare not found (optional):', vcResult.guide);
-        }
+        await this.setupLinuxVideoCompare();
 
         // NOTE: vs-mlrt upstream does not provide Linux pre-built binaries.
         // If the plugins are missing, attempt to build vsort from source when
@@ -537,9 +688,67 @@ export class DependencyManager {
         if (hasCuda) {
           const trtInstalled = await VsMlrtManager.isComponentInstalled('tensorrt');
           if (!trtInstalled) {
-            logger.warn('vs-mlrt TensorRT plugin (vstrt) not found on Linux. Install it through your distribution or build from source if you need TensorRT inference.');
+            logger.dependency('vs-mlrt TensorRT plugin (vstrt) not found on Linux — attempting optional source build');
+            this.sendProgress({ type: 'download', component: 'vs-mlrt TensorRT', progress: 0, message: 'TensorRT plugin missing — checking local TensorRT SDK...' });
+
+            const { VsMlrtLinuxBuilder } = await import('./vsMlrtLinuxBuilder');
+            const buildTools = await VsMlrtLinuxBuilder.detectBuildTools();
+            const tensorRtStatus = await VsMlrtLinuxBuilder.detectTensorRt();
+
+            if (!VsMlrtLinuxBuilder.isBuildEnvironmentReady(buildTools)) {
+              const missing = buildTools.filter(t => !t.found).map(t => t.name);
+              logger.warn(`Cannot build TensorRT plugin automatically. ${VsMlrtLinuxBuilder.getBuildToolGuide(missing)}`);
+              this.sendProgress({
+                type: 'download',
+                component: 'vs-mlrt TensorRT',
+                progress: 100,
+                message: `Optional TensorRT build skipped; missing build tools: ${missing.join(', ')}`,
+              });
+            } else if (!tensorRtStatus.found) {
+              logger.warn(`Cannot build TensorRT plugin automatically. ${tensorRtStatus.guide || VsMlrtLinuxBuilder.getTensorRtGuide()}`);
+              this.sendProgress({
+                type: 'download',
+                component: 'vs-mlrt TensorRT',
+                progress: 100,
+                message: 'Optional TensorRT build skipped; TensorRT SDK development files were not found.',
+              });
+            } else {
+              try {
+                const builder = new VsMlrtLinuxBuilder();
+                await builder.buildTensorRtAndInstall((progress) => {
+                  this.sendProgress({
+                    type: 'download',
+                    component: 'vs-mlrt TensorRT',
+                    progress: progress.progress,
+                    message: progress.message,
+                  });
+                });
+                logger.dependency('vs-mlrt TensorRT plugin built and installed from source');
+              } catch (buildError: any) {
+                logger.warn(`Optional TensorRT plugin build failed: ${buildError.message || 'unknown error'}`);
+                this.sendProgress({
+                  type: 'download',
+                  component: 'vs-mlrt TensorRT',
+                  progress: 100,
+                  message: 'Optional TensorRT plugin build failed; ONNX Runtime backends remain available.',
+                });
+              }
+            }
           } else {
             logger.dependency('vs-mlrt TensorRT plugin detected');
+            if (!executableExists(PATHS.TRTEXEC)) {
+              logger.warn('TensorRT plugin detected, but trtexec was not found. Checking TensorRT SDK for builder executable.');
+              try {
+                const { VsMlrtLinuxBuilder } = await import('./vsMlrtLinuxBuilder');
+                const builder = new VsMlrtLinuxBuilder();
+                const installedTrtexec = await builder.installTrtexecFromDetectedTensorRt();
+                if (!installedTrtexec) {
+                  logger.warn('trtexec was not found in detected TensorRT SDK paths; TensorRT engine building remains unavailable.');
+                }
+              } catch (trtexecError: any) {
+                logger.warn(`Failed to install trtexec from TensorRT SDK: ${trtexecError.message || 'unknown error'}`);
+              }
+            }
           }
         }
 

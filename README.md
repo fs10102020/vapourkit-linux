@@ -81,6 +81,7 @@ See [Model Support](docs/Models.md) for included models, custom model requiremen
 ### Known Issues (Linux)
 
 - **Flatpak vsview**: If the `vsview` entrypoint is missing, the app falls back to launching it via the Python module in the bundled venv and logs which launch path was used.
+- **Optional native builds**: Non-Flatpak Linux setup can build `video-compare` and `vstrt.so` only when their development dependencies are installed. Missing optional build inputs do not block CPU/ONNX setup.
 
 ## 🔧 Development
 

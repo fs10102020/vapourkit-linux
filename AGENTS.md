@@ -49,7 +49,7 @@ npm run update-docs      # regenerate docs/Models.md from src/data/modelLicenses
 ## Dependency Setup
 - `dependencyManager.setupDependencies()` is platform-split.
 - Windows downloads portable VapourSynth R72, Python 3.13, vs-mlrt, FFmpeg, video-compare, then pip-installs/extracts plugins.
-- Linux probes system tools, creates a copy-based venv, pip-installs packages, then builds `vsort.so` if `core.ort` is missing and build tools are available.
+- Linux probes system tools, creates a copy-based venv, pip-installs packages, optionally builds `video-compare`, builds `vsort.so` if `core.ort` is missing, and can build `vstrt.so` when CUDA plus TensorRT SDK dev files are present.
 - Linux setup fails on missing Python/venv/pip/FFmpeg/VapourSynth R76+/BestSource/ONNX Runtime.
 - `SetupScreen` matches setup steps by `componentPrefixes.some(prefix => component.startsWith(prefix))` because Windows/Linux emit different component names.
 
@@ -76,7 +76,7 @@ npm run update-docs      # regenerate docs/Models.md from src/data/modelLicenses
 - `$ORIGIN` rpath is passed without shell escaping because commands do not run through a shell.
 - Pinned source/build inputs: protobuf 3.21.12, ONNX commit `b86cc54`, ONNX Runtime 1.17.1.
 - Default ONNX Runtime source is Microsoft prebuilt CPU archive; system ONNX Runtime uses `VAPOURKIT_ONNXRUNTIME_SOURCE=system` plus include/lib dirs or config.
-- TensorRT `vstrt.so` is never auto-built; TensorRT remains optional.
+- TensorRT `vstrt.so` auto-build is optional and requires CUDA Toolkit plus TensorRT SDK headers/libs; missing TensorRT must not block CPU/ONNX setup.
 
 ## Flatpak
 - Manifest: `flatpak/com.aivideoupscaler.gui.yml`; Node20 SDK extension is required.

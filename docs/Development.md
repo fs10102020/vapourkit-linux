@@ -17,7 +17,7 @@ Linux development uses native system tools and a Python virtual environment in `
 - Optional TensorRT support: `core.trt` plus `trtexec`
 - Optional AMD/ROCm diagnostics: AMD GPU and ROCm runtime detection are reported, but current vs-mlrt `core.ort` does not expose a ROCm provider.
 
-The Linux setup flow verifies these with read-only probes. When the vs-mlrt ONNX Runtime plugin is missing and a build environment (`cmake`, `ninja`, `git`, `gcc`, `g++`, `patchelf`, `ldd`) is detected, the app attempts to compile the plugin from source automatically. This caches protobuf and ONNX locally so repeated setups are fast. TensorRT remains optional and is never auto-built.
+The Linux setup flow verifies these with read-only probes. When the vs-mlrt ONNX Runtime plugin is missing and a build environment (`cmake`, `ninja`, `git`, `gcc`, `g++`, `patchelf`, `ldd`) is detected, the app attempts to compile the plugin from source automatically. This caches protobuf and ONNX locally so repeated setups are fast. TensorRT remains optional and is built only when CUDA Toolkit plus TensorRT SDK development files are detected.
 
 By default, the Linux builder links `vsort.so` against Microsoft's prebuilt CPU ONNX Runtime archive and validates native dependencies with `ldd`. Advanced users can opt into a system ONNX Runtime build by setting `VAPOURKIT_ONNXRUNTIME_SOURCE=system`, `VAPOURKIT_ONNXRUNTIME_INCLUDE_DIR`, and `VAPOURKIT_ONNXRUNTIME_LIB_DIR`, or by configuring `onnxRuntimeSource` and `systemOnnxRuntime` in `app-config.json`. The loaded `core.ort` plugin is still the source of truth for providers; current vs-mlrt `vsort` supports CPU/CUDA/CoreML/DML, not ROCm.
 
@@ -59,6 +59,9 @@ npm run build:all
 # Build all configured Linux electron-builder targets
 npm run build:linux
 
+# Alias for all configured Linux electron-builder targets
+npm run build:linux:all
+
 # Build unpacked Linux directory
 npm run build:linux:dir
 
@@ -72,7 +75,7 @@ npm run build:deb
 npm run build:rpm
 ```
 
-Linux deb/rpm packages declare dependencies on `ffmpeg`, `vapoursynth (>= 76)`, `python3`, and `python3-venv`. vs-mlrt plugins are expected to be provided by the system/user, or the app can auto-build the ONNX Runtime plugin when build tools are present.
+Linux deb/rpm packages declare dependencies on `ffmpeg`, `vapoursynth (>= 76)`, `python3`, and `python3-venv`. vs-mlrt plugins are expected to be provided by the system/user, or the app can auto-build the ONNX Runtime plugin when build tools are present. TensorRT plugin auto-build remains optional and additionally requires NVIDIA TensorRT SDK development files.
 
 ## Flatpak Packaging
 Flatpak files live in `flatpak/`:
@@ -80,7 +83,7 @@ Flatpak files live in `flatpak/`:
 - `flatpak/vapourkit.sh` sets the Flatpak runtime environment and launches Electron.
 - `generated-sources.json` contains npm source metadata generated from `package-lock.json` for offline Flatpak builds.
 
-The Flatpak manifest builds FFmpeg, VapourSynth, BestSource, video-compare, and a Python venv. It also builds the vs-mlrt ONNX Runtime plugin (`vsort`) from source inside the Flatpak so the app is functional out-of-the-box. TensorRT (`vstrt`) is not bundled; users who need it can install it manually or extend the Flatpak.
+The Flatpak manifest builds FFmpeg, VapourSynth, BestSource, video-compare, and a Python venv. It also builds the vs-mlrt ONNX Runtime plugin (`vsort`) from source inside the Flatpak so the app is functional out-of-the-box. TensorRT (`vstrt`) is not bundled; native Linux setup can build it only when CUDA Toolkit and TensorRT SDK development files are available.
 
 **Flatpak build quirks:**
 - **Node20 SDK required**: The manifest uses `org.freedesktop.Sdk.Extension.node20` with `append-path: /usr/lib/sdk/node20/bin`.

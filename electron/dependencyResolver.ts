@@ -237,7 +237,7 @@ export class DependencyResolver {
       component: 'video-compare',
       name: 'video-compare',
       installed: false,
-      guide: 'video-compare is used for side-by-side comparison.\n  Arch: yay -S video-compare (AUR)\n  Debian/Ubuntu: Build from source — https://github.com/pixop/video-compare\n  Fedora: Build from source',
+      guide: 'video-compare is used for side-by-side comparison. Setup can build it from source when FFmpeg/SDL2 development headers are installed.\n  Arch: yay -S video-compare (AUR) or sudo pacman -S base-devel git ffmpeg sdl2 sdl2_ttf pkgconf\n  Debian/Ubuntu: sudo apt install build-essential git pkg-config libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev libswresample-dev libsdl2-dev libsdl2-ttf-dev\n  Fedora: sudo dnf install make gcc-c++ git pkgconf-pkg-config ffmpeg-devel SDL2-devel SDL2_ttf-devel',
     };
   }
 

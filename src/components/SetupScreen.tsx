@@ -24,16 +24,28 @@ interface SetupStep {
 
 function getSetupSteps(isLinuxPlatform: boolean, cudaAvailable: boolean): SetupStep[] {
   if (isLinuxPlatform) {
-    return [
+    const steps: SetupStep[] = [
       { id: 'python', name: 'Python', description: 'Python 3 interpreter', componentPrefixes: ['Python'] },
       { id: 'python-venv', name: 'Python venv', description: 'Virtual environment', componentPrefixes: ['Python venv'] },
       { id: 'python-packages', name: 'Python Packages', description: 'Required Python packages', componentPrefixes: ['Python Packages', 'pip-'] },
       { id: 'ffmpeg', name: 'FFmpeg', description: 'Video encoding/decoding', componentPrefixes: ['FFmpeg'] },
+      { id: 'video-compare', name: 'Video Compare Tool', description: 'Optional comparison viewer', componentPrefixes: ['Video Compare'] },
       { id: 'vapoursynth', name: 'VapourSynth', description: 'Video processing framework', componentPrefixes: ['VapourSynth'] },
       { id: 'onnx', name: 'vs-mlrt ONNX Runtime', description: 'ONNX Runtime support', componentPrefixes: ['vs-mlrt ONNX Runtime', 'vs-mlrt'] },
       { id: 'models', name: 'ONNX Models', description: 'Bundled AI upscaling models', componentPrefixes: ['ONNX Models'] },
       { id: 'plugins', name: 'Plugins & Filters', description: 'PyTorch, vsjetpack, and VapourSynth plugins', componentPrefixes: ['Plugins'] },
     ];
+
+    if (cudaAvailable) {
+      steps.splice(7, 0, {
+        id: 'tensorrt',
+        name: 'vs-mlrt TensorRT',
+        description: 'Optional NVIDIA TensorRT support',
+        componentPrefixes: ['vs-mlrt TensorRT']
+      });
+    }
+
+    return steps;
   }
 
   const steps: SetupStep[] = [
