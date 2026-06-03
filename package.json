@@ -19,6 +19,7 @@
         "build:appimage": "npm run build && electron-builder --linux AppImage --x64",
         "build:deb": "npm run build && electron-builder --linux deb --x64",
         "build:rpm": "npm run build && electron-builder --linux rpm --x64",
+        "build:pacman": "npm run build && electron-builder --linux pacman --x64",
         "preview": "vite preview",
         "test": "vitest run",
         "test:watch": "vitest",
@@ -145,16 +146,63 @@
                     "arch": [
                         "x64"
                     ]
+                },
+                {
+                    "target": "pacman",
+                    "arch": [
+                        "x64"
+                    ]
                 }
             ],
             "icon": "build/icon.png",
             "category": "AudioVideo",
-            "artifactName": "Vapourkit-${version}-${arch}.${ext}",
+            "maintainer": "Kim2091",
+            "artifactName": "Vapourkit-${version}-${arch}.${ext}"
+        },
+        "deb": {
             "depends": [
                 "ffmpeg",
-                "vapoursynth (>= 76)",
+                "vapoursynth (>= 75)",
                 "python3",
                 "python3-venv"
+            ]
+        },
+        "rpm": {
+            "depends": [
+                "ffmpeg",
+                "vapoursynth >= 75",
+                "python3"
+            ]
+        },
+        "pacman": {
+            "depends": [
+                "c-ares",
+                "ffmpeg",
+                "gtk3",
+                "http-parser",
+                "libevent",
+                "libvpx",
+                "libxslt",
+                "libxss",
+                "minizip",
+                "nss",
+                "re2",
+                "snappy",
+                "libnotify",
+                "libayatana-appindicator",
+                "python",
+                "vapoursynth>=75",
+                "vapoursynth-plugin-bestsource",
+                "cmake",
+                "ninja",
+                "git",
+                "gcc",
+                "make",
+                "glibc",
+                "patchelf",
+                "pkgconf",
+                "sdl2-compat",
+                "sdl2_ttf"
             ]
         }
     }

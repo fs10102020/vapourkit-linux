@@ -11,7 +11,7 @@ Windows development uses the same download-based setup flow as production. The a
 Linux development uses native system tools and a Python virtual environment in `data/python-venv`:
 - `python3` and `python3-venv`
 - `ffmpeg` and `ffprobe`
-- `vspipe` from VapourSynth R76 or newer
+- `vspipe` from VapourSynth R75 or newer
 - BestSource plugin loadable as `core.bs`
 - vs-mlrt ONNX Runtime plugin loadable as `core.ort`
 - Optional TensorRT support: `core.trt` plus `trtexec`
@@ -73,9 +73,17 @@ npm run build:deb
 
 # Build rpm
 npm run build:rpm
+
+# Build Arch/CachyOS pacman package
+npm run build:pacman
 ```
 
-Linux deb/rpm packages declare dependencies on `ffmpeg`, `vapoursynth (>= 76)`, `python3`, and `python3-venv`. vs-mlrt plugins are expected to be provided by the system/user, or the app can auto-build the ONNX Runtime plugin when build tools are present. TensorRT plugin auto-build remains optional and additionally requires NVIDIA TensorRT SDK development files.
+Linux AppImage, deb, rpm, and pacman packages are configured. deb/rpm packages declare dependencies on `ffmpeg`, `vapoursynth (>= 75)`, `python3`, and `python3-venv`; the pacman package uses Arch package names including `python`, `vapoursynth>=75`, `vapoursynth-plugin-bestsource`, and the build tools needed for app-managed vs-mlrt/video-compare compilation. vs-mlrt plugins are expected to be provided by the system/user, or the app can auto-build the ONNX Runtime plugin when build tools are present. TensorRT plugin auto-build remains optional and additionally requires NVIDIA TensorRT SDK development files.
+
+Arch/CachyOS runtime setup:
+```bash
+sudo pacman -S python ffmpeg vapoursynth vapoursynth-plugin-bestsource cmake ninja git gcc make glibc patchelf pkgconf sdl2-compat sdl2_ttf
+```
 
 ## Flatpak Packaging
 Flatpak files live in `flatpak/`:

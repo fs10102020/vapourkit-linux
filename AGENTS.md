@@ -52,7 +52,7 @@ npm run update-docs      # regenerate docs/Models.md from src/data/modelLicenses
 - Windows downloads portable VapourSynth R72, Python 3.13, vs-mlrt, FFmpeg, video-compare, then pip-installs/extracts plugins.
 - Linux probes system tools, creates a copy-based venv, pip-installs packages, optionally builds `video-compare`, builds `vsort.so` if `core.ort` is missing, and can build `vstrt.so` when CUDA plus TensorRT SDK dev files are present.
 - Linux `video-compare` source build is optional and requires `git`, `make`, `gcc/g++`, `pkg-config`, FFmpeg dev headers, SDL2, and SDL2_ttf; missing inputs must not block core setup.
-- Linux setup fails on missing Python/venv/pip/FFmpeg/VapourSynth R76+/BestSource/ONNX Runtime.
+- Linux setup fails on missing Python/venv/pip/FFmpeg/VapourSynth R75+/BestSource/ONNX Runtime.
 - `SetupScreen` matches setup steps by `componentPrefixes.some(prefix => component.startsWith(prefix))` because Windows/Linux emit different component names.
 
 ## Backend Capabilities
@@ -92,4 +92,5 @@ npm run update-docs      # regenerate docs/Models.md from src/data/modelLicenses
 ## Dev Environment Notes
 - Node 18+ works locally; Node 20 is needed for Flatpak packaging.
 - On Arch, Electron download can fail; workaround is system `electron34`, symlink `node_modules/electron/dist/electron` to `/usr/lib/electron34/electron`, and write `electron` to `node_modules/electron/path.txt`.
+- Arch/CachyOS runtime setup uses pacman packages: `python`, `ffmpeg`, `vapoursynth`, `vapoursynth-plugin-bestsource`, `cmake`, `ninja`, `git`, `gcc`, `make`, `glibc`, `patchelf`, `pkgconf`, `sdl2-compat`, and `sdl2_ttf`.
 - Vite dev server ignores `data/`, `data2/`, and `release/`.

@@ -510,7 +510,7 @@ export class DependencyManager {
     return (
       `Missing dependencies for optional video-compare source build: ${missing.join(', ')}\n` +
       `Install them with your package manager:\n` +
-      `  Arch: sudo pacman -S base-devel git ffmpeg sdl2 sdl2_ttf pkgconf\n` +
+      `  Arch: sudo pacman -S base-devel git ffmpeg sdl2-compat sdl2_ttf pkgconf\n` +
       `  Debian/Ubuntu: sudo apt install build-essential git pkg-config libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev libswresample-dev libsdl2-dev libsdl2-ttf-dev\n` +
       `  Fedora: sudo dnf install make gcc-c++ git pkgconf-pkg-config ffmpeg-devel SDL2-devel SDL2_ttf-devel\n` +
       `  openSUSE: sudo zypper install -t pattern devel_basis && sudo zypper install git pkg-config ffmpeg-6-libavformat-devel ffmpeg-6-libavcodec-devel ffmpeg-6-libavfilter-devel ffmpeg-6-libavutil-devel ffmpeg-6-libswscale-devel ffmpeg-6-libswresample-devel libSDL2-devel libSDL2_ttf-devel`

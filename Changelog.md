@@ -21,7 +21,7 @@
 - Add Flatpak packaging files and generated npm source metadata
   - Flatpak manifest builds FFmpeg, VapourSynth, BestSource, video-compare, and the Python venv
   - Auto-builds vs-mlrt ONNX Runtime plugin (vsort) from source inside the Flatpak
-- Add Linux electron-builder targets and system dependency metadata for AppImage, deb, and rpm builds
+- Add Linux electron-builder targets and system dependency metadata for AppImage, deb, rpm, and Arch pacman builds
 - Add CUDA-aware PyTorch wheel selection (auto-detects CUDA version, falls back to CPU)
 - Add configurable Linux ONNX Runtime source selection for vs-mlrt builds
   - Default remains Microsoft's prebuilt CPU ONNX Runtime archive
@@ -49,7 +49,7 @@
 - **tsconfig.electron.json**: Confirmed `"exclude": ["**/*.test.ts"]` already present; no test files leaked to production build.
 - **Linux command discovery**: Replaced `which` usage with PATH scanning via `resolveCommandPath()`, improving compatibility with minimal distros and sandboxes.
 - **Linux venv portability**: Venv creation now uses `--copies` when available, and site-packages detection scans `lib`/`lib64` dynamically instead of hardcoding Python minor versions.
-- **VapourSynth version requirement**: Linux setup now validates VapourSynth R76+ instead of accepting any `vspipe` that exits successfully.
+- **VapourSynth version requirement**: Linux setup now validates VapourSynth R75+ instead of accepting any `vspipe` that exits successfully, matching current Arch/CachyOS packages.
 - **vsview fallback diagnostics**: Preview launch now logs whether it used the configured `vsview`, PATH-resolved `vsview`, or `python -m vsview` fallback.
 
 ## 0.16.1

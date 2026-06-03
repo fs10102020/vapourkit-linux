@@ -202,13 +202,13 @@ export class DependencyResolver {
       if (version === null) {
         logger.warn(`Could not parse VapourSynth version from output: "${(result.stdout || '').trim().split('\n')[0]}"`);
       }
-      if (version !== null && version < 76) {
+      if (version !== null && version < 75) {
         return {
           component: 'vapoursynth',
           name: 'VapourSynth',
           installed: false,
           path: await DependencyResolver.which('vspipe') || 'vspipe',
-          guide: `VapourSynth R76 or newer is required; detected R${version}. Update your distro package or build VapourSynth from source.`,
+          guide: `VapourSynth R75 or newer is required; detected R${version}. Update your distro package or build VapourSynth from source.`,
         };
       }
       return { component: 'vapoursynth', name: 'VapourSynth', installed: true, path: await DependencyResolver.which('vspipe') || 'vspipe' };
@@ -218,7 +218,7 @@ export class DependencyResolver {
       component: 'vapoursynth',
       name: 'VapourSynth',
       installed: false,
-      guide: 'VapourSynth R76+ is required for video processing.\n  Arch: sudo pacman -S vapoursynth\n  Debian/Ubuntu: Check distro package availability or build from source\n  Fedora: Check RPM Fusion or build from source\n  openSUSE: sudo zypper install vapoursynth\n  Other distros: install VapourSynth R76+ with vspipe available on PATH\n  See: https://www.vapoursynth.com/doc/installation.html',
+      guide: 'VapourSynth R75+ is required for video processing.\n  Arch: sudo pacman -S vapoursynth\n  Debian/Ubuntu: Check distro package availability or build from source\n  Fedora: Check RPM Fusion or build from source\n  openSUSE: sudo zypper install vapoursynth\n  Other distros: install VapourSynth R75+ with vspipe available on PATH\n  See: https://www.vapoursynth.com/doc/installation.html',
     };
   }
 
@@ -237,7 +237,7 @@ export class DependencyResolver {
       component: 'video-compare',
       name: 'video-compare',
       installed: false,
-      guide: 'video-compare is used for side-by-side comparison. Setup can build it from source when FFmpeg/SDL2 development headers are installed.\n  Arch: yay -S video-compare (AUR) or sudo pacman -S base-devel git ffmpeg sdl2 sdl2_ttf pkgconf\n  Debian/Ubuntu: sudo apt install build-essential git pkg-config libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev libswresample-dev libsdl2-dev libsdl2-ttf-dev\n  Fedora: sudo dnf install make gcc-c++ git pkgconf-pkg-config ffmpeg-devel SDL2-devel SDL2_ttf-devel',
+      guide: 'video-compare is used for side-by-side comparison. Setup can build it from source when FFmpeg/SDL2 development headers are installed.\n  Arch: yay -S video-compare (AUR) or sudo pacman -S base-devel git ffmpeg sdl2-compat sdl2_ttf pkgconf\n  Debian/Ubuntu: sudo apt install build-essential git pkg-config libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev libswresample-dev libsdl2-dev libsdl2-ttf-dev\n  Fedora: sudo dnf install make gcc-c++ git pkgconf-pkg-config ffmpeg-devel SDL2-devel SDL2_ttf-devel',
     };
   }
 

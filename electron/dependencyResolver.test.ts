@@ -34,10 +34,16 @@ describe('parseVapourSynthVersion', () => {
     expect(parseVapourSynthVersion('VapourSynth  R  70')).toBe(70);
   });
 
-  it('rejects versions below 76', () => {
+  it('accepts Arch/CachyOS R75 as the Linux runtime floor', () => {
+    const v75 = parseVapourSynthVersion('VapourSynth Video Processing Library\nCore R75');
+    expect(v75).toBe(75);
+    expect(v75! >= 75).toBe(true);
+  });
+
+  it('rejects versions below 75', () => {
     const v70 = parseVapourSynthVersion('VapourSynth R70');
     expect(v70).toBe(70);
-    expect(v70! < 76).toBe(true);
+    expect(v70! < 75).toBe(true);
   });
 
   it('returns null for unrecognized output', () => {
